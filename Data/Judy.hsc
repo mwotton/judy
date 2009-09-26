@@ -1,0 +1,436 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE CPP                      #-}
+{-# LANGUAGE EmptyDataDecls           #-}
+{-# LANGUAGE TypeSynonymInstances     #-}
+{-# LANGUAGE MagicHash                #-}
+
+-- | Very fast, mutable associative data types based on Judy arrays.
+--
+-- A good imperative, mutable replacement for IntMap.
+--
+-- Judy arrays are both speed- and memory-efficient, with no tuning or
+-- configuration required, across a wide range of index set types (sequential,
+-- periodic, clustered, random). Judy\'s speed and memory usage are typically
+-- better than other data storage models such as skiplists, linked lists,
+-- binary, ternary, b-trees, or even hashing, and improves with very large
+-- data sets.
+-- 
+-- The memory used by a Judy array is nearly proportional to the
+-- population (number of elements).
+--
+-- For further references to the implementation, see:
+--
+-- * <http://en.wikipedia.org/wiki/Judy_array>
+--
+-- Building a simple word-index table. About 4x faster than using an 'IntMap'
+--
+-- >
+-- > import Control.Monad
+-- > import qualified Data.Judy as J
+-- >
+-- > main = do
+-- >    j <- J.new :: IO (J.JudyL Int)
+-- >    forM_ [1..10000000] $ \n -> J.insert n (fromIntegral n :: Int) j
+-- >    v <- J.lookup 100 j
+-- >    print v
+-- >
+--
+-- Running this:
+--
+-- > $ ghc -O2 --make A.hs
+-- > [1 of 1] Compiling Main             ( A.hs, A.o )
+-- > Linking A ...
+--
+-- > $ time ./A
+-- > Just 100
+-- > ./A  1.95s user 0.08s system 99% cpu 2.028 total
+--
+
+module Data.Judy (
+
+    -- * Basic types
+    JudyL, Key,
+
+    -- * Operations
+    Data.Judy.new,
+    -- singleton
+    -- size
+    Data.Judy.insert,
+    -- insertWith
+    Data.Judy.lookup,
+    -- member
+    Data.Judy.delete,
+    -- adjust
+    -- update
+
+--    memoryUsed
+
+    -- * Judy-storable types
+    JA(..),
+
+  ) where
+
+import Foreign hiding (new)
+import Foreign.C.Types
+import Foreign.ForeignPtr
+
+import GHC.Ptr
+import GHC.Base
+import GHC.Prim
+
+------------------------------------------------------------------------
+
+#include <Judy.h>
+
+#include <haskell-judy.h>
+
+------------------------------------------------------------------------
+-- Type mappings
+
+-- | The type of keys in the JudyL arrays. A word-sized type (64 or 32 bits)
+type Key  = Word
+
+-- type Key1 = Word
+-- type Key2 = Word
+-- type JNth = Word
+
+-- Implementation notes:
+--
+-- One of the difficulties in using the JudyL function calls lies in
+-- determining whether to pass a pointer or the address of a pointer. Since the
+-- functions that modify the JudyL array must also modify the pointer to the
+-- JudyL array, you must pass the address of the pointer rather than the
+-- pointer itself. This often leads to hard-to-debug programmatic errors.
+-- In practice, the macros allow the compiler to catch programming
+-- errors when pointers instead of addresses of pointers are passed.
+-- 
+-- The JudyL function calls have an additional parameter beyond those
+-- specified in the macro calls. This parameter is either a pointer to an
+-- error structure, or NULL (in which case the detailed error information
+-- is not returned).
+--
+-- JudyL functions: Index is a Word_t and Value is a Word_t. This makes
+-- JudyL a pure word-to-word\/pointer mapper. JudySL and JudyHL are
+-- based on this property of JudyL.
+--
+
+------------------------------------------------------------------------
+-- JudyL Arrays
+
+-- | A JudyL array is a finite map from Word to Word values. A value
+-- is addressed by a key (Key). The array may be sparse, and the key may
+-- be any word-sized value. There are no duplicate keys.
+--
+newtype JudyL a = JudyL { unJudyL :: ForeignPtr JudyL_ }
+    deriving Show
+
+type JudyL_ = Ptr JudyLArray
+
+data JudyLArray
+
+-- | Allocate a new empty JudyL array. A finalizer is associated with
+-- the JudyL array, that will free it automatically once the last
+-- reference has been dropped.
+--
+new :: JA a => IO (JudyL a)
+new = do
+    -- we allocate the structure on the Haskell heap (just a pointer)
+    fp <- mallocForeignPtrBytes (sizeOf (undefined :: Ptr Word))
+    addForeignPtrFinalizer c_judyl_free_ptr fp
+    withForeignPtr fp $ \p -> poke p (castPtr nullPtr)
+    return $! JudyL fp
+
+------------------------------------------------------------------------
+
+-- | Given a pointer to a JudyL array quickly.
+--
+-- > Word_t   JudyLFreeArray( PPvoid_t PPJLArray, PJError_t PJError);
+--
+-- >    JudyLFreeArray(&PJLArray, &JError)
+--
+-- which is
+--
+-- >                  #define JLFA(Rc_word, PJLArray) \
+-- >                     Rc_word = JudyLFreeArray(&PJLArray, PJE0)
+--
+foreign import ccall "&hs_judyl_free"
+    c_judyl_free_ptr :: FunPtr (Ptr JudyL_ -> IO ())
+
+
+-- | JudyLMemUsed
+--
+-- > JudyLMemUsed(PJLArray)
+--
+-- > #define JLMU(Rc_word, PJLArray) \
+-- >   Rc_word = JudyLMemUsed(PJLArray)
+-- foreign import ccall "JudyLMemUsed"
+--     c_judyl_mem_used :: Ptr JudyL_ -> IO Word
+
+-- | Return the number of bytes of memory used by the JudyL array.
+-- memoryUsed :: JudyL -> IO Word
+-- memoryUsed j = withForeignPtr (unJudyL j) c_judyl_mem_used
+
+------------------------------------------------------------------------
+
+-- |
+-- JLI(PValue, PJLArray, Index) // JudyLIns()
+--
+-- JudyLIns : insert an index into a 'JudyL' array, returning a pointer
+-- to the value to store in the association table (which may be a
+-- pointer) 
+--
+-- > JudyLIns(&PJLArray, Index, &JError)
+--
+-- used as:
+--
+-- > #define JLI(PValue, PJLArray, Index)  \
+-- >   PValue = JudyLIns(&PJLArray, Index, PJE0)
+-- 
+-- Insert an Index and Value into the JudyL array PJLArray. If the Index is
+-- successfully inserted, the Value is initialized to 0. If the Index was
+-- already present, the Value is not modified.
+--
+foreign import ccall unsafe "JudyLIns"
+    c_judy_lins :: Ptr JudyL_ -> Key -> JError -> IO (Ptr Word)
+
+-- | Insert a key and value pair into the JudyL array.
+-- *If the key is already present in the map, the value is not modified*
+--
+insert :: JA a => Key -> a -> JudyL a -> IO ()
+insert k v j = do
+    withForeignPtr (unJudyL j) $ \p -> do
+        v_ptr <- c_judy_lins p (fromIntegral k) nullError
+        if v_ptr == judyErrorPtr
+            then error "Data.Judy.insert: memory error with JudyL"
+            else poke v_ptr =<< toWord v
+{-# INLINE insert #-}
+
+-- TODO: fuse construction with uvectors.
+
+------------------------------------------------------------------------
+
+-- |
+-- JudyLGet: read a value from a JudyL array
+--
+-- > JudyLGet(PJLArray, Index, &JError)
+--
+-- used as:
+--
+-- > #define JLG(PValue, PJLArray, Index)  \
+-- >   PValue = JudyLGet(PJLArray, Index, PJE0)
+--
+-- Get the pointer PValue associated with Index in the PJLArray Judy array.
+-- Return PValue pointing to Value. Return PValue set to NULL if the Index was
+-- not present. Return PValue set to PJERR if a malloc() fail occured.
+--
+foreign import ccall unsafe "JudyLGet"
+    c_judy_lget :: JudyL_ -> Key -> JError -> IO (Ptr Word)
+
+-- | Lookup a value associated with a key in the JudyL array.
+lookup :: JA a => Key -> JudyL a -> IO (Maybe a)
+lookup k j = do
+    withForeignPtr (unJudyL j) $ \p -> do
+        q     <- peek p -- get the actual judy array
+        v_ptr <- c_judy_lget q (fromIntegral k) nullError
+        if v_ptr == judyErrorPtr
+            then error "Data.Judy.lookup: JudyL memory error"
+            else if v_ptr == nullPtr
+                    then return Nothing
+                    else do
+                        v_word <- peek v_ptr
+                        return . Just =<< fromWord v_word
+{-# INLINE lookup #-}
+
+-- > JudyLDel(&PJLArray, Index, &JError)
+--
+-- as:
+--
+-- > #define JLD(Rc_int, PJLArray, Index)  \
+-- >    Rc_int = JudyLDel(&PJLArray, Index, PJE0)
+--
+-- Return Rc_int set to 1 if successful. Return Rc_int set to 0 if Index was
+-- not present. Return Rc_int set to JERR if a malloc() fail occured.
+--
+foreign import ccall unsafe "JudyLDel"
+    c_judy_ldel :: Ptr JudyL_ -> Key -> JError -> IO CInt
+
+-- | Delete the Index\/Value pair from the JudyL array.
+--
+delete :: Key -> JudyL a -> IO ()
+delete k j = do
+    withForeignPtr (unJudyL j) $ \p -> do
+        i <- c_judy_ldel p (fromIntegral k) nullError
+        if i == judyError then error "Data.Judy.delete: JudyL memory error"
+                          else return ()
+{-# INLINE delete #-}
+
+
+-- |
+-- Count the number of indexes present in the JudyL array
+--
+-- > JLC(Rc_word, PJLArray, Index1, Index2) // JudyLCount()
+--
+-- Return Rc_word set to the count. A return value of 0 can be valid as a
+-- count. To count all indexes present in a JudyL array, use:
+--
+-- > JLC(Rc_word, PJLArray, 0, -1);
+
+-- TODO: fromList
+-- TODO: toList
+-- TODO: update
+
+------------------------------------------------------------------------
+-- Judy errors
+
+{-
+-- | Judy error responses.
+type JudyErrorCode = CInt
+
+ #{enum JudyErrorCode,
+    , judy_error_none           = JU_ERRNO_NONE
+    , judy_error_full           = JU_ERRNO_FULL
+    , judy_error_nfmax          = JU_ERRNO_NFMAX
+    , judy_error_nomem          = JU_ERRNO_NOMEM
+    , judy_error_nullparray     = JU_ERRNO_NULLPPARRAY
+    , judy_error_nonnullparray  = JU_ERRNO_NONNULLPARRAY
+    , judy_error_nullpindex     = JU_ERRNO_NULLPINDEX
+    , judy_error_nullpvalue     = JU_ERRNO_NULLPVALUE
+    , judy_error_notjudy1       = JU_ERRNO_NOTJUDY1
+    , judy_error_notjudyl       = JU_ERRNO_NOTJUDYL
+    , judy_error_notjudysl      = JU_ERRNO_NOTJUDYSL
+    , judy_error_unsorted       = JU_ERRNO_UNSORTED
+    , judy_error_overrun        = JU_ERRNO_OVERRUN
+    , judy_error_corrupt        = JU_ERRNO_CORRUPT
+    }
+-}
+
+newtype JError = JError (Ptr JError_)
+
+data JError_
+
+-- | The null error value.
+nullError :: JError
+nullError = JError nullPtr
+
+-- | For checking return values from various Judy functions
+-- A scalar error.
+judyError :: CInt
+judyError = (#const JERR)
+
+{-
+-- | For checking return values from various Judy functions
+-- Pointer to a JError
+foreign import ccall unsafe "haskell-judy.h hs_judy_pointer_error"
+     c_judy_error_ptr :: Ptr Word
+
+judyErrorPtr :: Ptr Word
+judyErrorPtr = c_judy_error_ptr
+{-# INLINE judyErrorPtr #-}
+-}
+
+-- judyErrorPtr :: Ptr Word
+-- judyErrorPtr = Ptr (int2Addr## (word2Int## (not## (int2Word## 0##))))
+-- {-# INLINE judyErrorPtr #-}
+
+-- | The error pointer. maxBound :: Word. We try hard to get this to inline.
+-- Empirically determined to yield the fastest code.
+judyErrorPtr :: Ptr Word
+judyErrorPtr = Ptr (case (#const PJERR) of I## i## -> int2Addr## i##)
+{-# INLINE judyErrorPtr #-}
+
+
+------------------------------------------------------------------------
+-- The JA element class.
+
+--
+-- | Class of things that can be stored in the JudyL array.
+-- You need to be able to convert the structure to a Word value,
+-- or a word-sized pointer.
+--
+class JA a where
+    toWord   :: a -> IO Word
+    fromWord :: Word -> IO a
+
+------------------------------------------------------------------------
+
+instance JA () where
+    toWord   () = return 0
+    fromWord _  = return ()
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Bool where
+    toWord   b = return (fromIntegral (fromEnum b))
+    fromWord n = return (toEnum (fromIntegral n))
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+------------------------------------------------------------------------
+
+instance JA Word where
+    toWord   w = return w
+    fromWord w = return w
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Int where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Int8 where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Int16 where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Int32 where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Word8 where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Word16 where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JA Word32 where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+------------------------------------------------------------------------
+--
+-- * Could be any Storable
+-- * Could be any Haskell value thanks to StablePtr
+-- * ST-based interface
+-- * Freeze/Pure interface.
+--
+-- TODO: make it thread safe.
+--
+-- TODO: hash interface based on the document (cache hash, C function).
+-- IntMap interface.
+-- Split out basic interface.
+--
+-- Binary instance?
+--
+-- Fast bytestrings.
+-- Performance benchmarks.
+-- Type families to pick different underlying representations.
+--

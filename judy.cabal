@@ -1,0 +1,34 @@
+name:            judy
+version:         0.1
+homepage:        http://code.haskell.org/~dons/code/judy
+synopsis:        Fast, scalable, mutable dynamic arrays, maps and hashes
+description:     Fast, scalable. mutable dynamic arrays, maps and hashes
+category:        Data
+license:         BSD3
+license-file:    LICENSE
+copyright:       (c) 2008, Don Stewart <dons@galois.com>
+author:          Don Stewart
+maintainer:      Don Stewart <dons@galois.com>
+cabal-version:   >= 1.2.0
+build-type:      Simple
+tested-with:     GHC ==6.8.2
+
+library
+    exposed-modules: Data.Judy
+
+    extensions:      CPP,
+                     GeneralizedNewtypeDeriving,
+                     EmptyDataDecls,
+                     TypeSynonymInstances
+
+    ghc-options:     -Wall -fvia-C -O2
+    cc-options:      -O3
+    build-depends:   base, ghc-prim
+
+    extra-libraries:  Judy
+
+    c-sources:        cbits/haskell-judy.c
+    include-dirs:     includes
+    includes:         haskell-judy.h
+    install-includes: haskell-judy.h
+
