@@ -1,1 +1,4 @@
-Need C shims to the macros.
+ - Need C shims to the macros?
+ - Benchmark
+ - Measure knuc hashtable benchmark.
+

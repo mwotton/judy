@@ -2,7 +2,7 @@ name:            judy
 version:         0.1.0.1
 homepage:        http://code.haskell.org/~dons/code/judy
 synopsis:        Fast, scalable, mutable dynamic arrays, maps and hashes
-description:     Fast, scalable. mutable dynamic arrays, maps and hashes
+description:     Fast, scalable, mutable dynamic arrays, maps and hashes
 category:        Data
 license:         BSD3
 license-file:    LICENSE
@@ -23,7 +23,9 @@ library
 
     ghc-options:     -Wall -fvia-C -O2
     cc-options:      -O3
-    build-depends:   base < 10, ghc-prim
+    build-depends:   base < 10,
+                     ghc-prim,
+                     bytestring
 
     extra-libraries:  Judy
 

@@ -16,7 +16,9 @@
 -- data sets.
 -- 
 -- The memory used by a Judy array is nearly proportional to the
--- population (number of elements).
+-- population (number of elements). Note that as Judy is allocated on
+-- C language side, GHC's profiling system won't report memory use by
+-- Judy arrays.
 --
 -- For further references to the implementation, see:
 --
@@ -53,7 +55,6 @@ module Data.Judy (
 
     -- * Operations
     Data.Judy.new,
-    -- singleton
     -- size
     Data.Judy.insert,
     -- insertWith
@@ -66,7 +67,7 @@ module Data.Judy (
 --    memoryUsed
 
     -- * Judy-storable types
-    JA(..),
+    JE(..),
 
   ) where
 
@@ -77,6 +78,12 @@ import Foreign.ForeignPtr
 import GHC.Ptr
 import GHC.Base
 import GHC.Prim
+import GHC.Word
+
+--
+-- For instances
+--
+import qualified Data.ByteString as S
 
 ------------------------------------------------------------------------
 
@@ -130,12 +137,21 @@ data JudyLArray
 
 -- | Allocate a new empty JudyL array. A finalizer is associated with
 -- the JudyL array, that will free it automatically once the last
--- reference has been dropped.
+-- reference has been dropped. Note that if you store pointers in the
+-- Judy array we have no way of deallocating those. You need to track
+-- those yourself (e.g. via StableName or ForeignPtr).
 --
-new :: JA a => IO (JudyL a)
+-- The Haskell GC will track references to the foreign resource, but the 
+-- foreign resource won't exert any heap pressure on the GC, meaning
+-- that finalizers will be run much later than you expect. An explicit
+-- 'performGC' can help with this.
+--
+new :: JE a => IO (JudyL a)
 new = do
     -- we allocate the structure on the Haskell heap (just a pointer)
     fp <- mallocForeignPtrBytes (sizeOf (undefined :: Ptr Word))
+
+    -- note that the Haskell GC doesn't really know costly the arrays are.
     addForeignPtrFinalizer c_judyl_free_ptr fp
     withForeignPtr fp $ \p -> poke p (castPtr nullPtr)
     return $! JudyL fp
@@ -196,7 +212,7 @@ foreign import ccall unsafe "JudyLIns"
 -- | Insert a key and value pair into the JudyL array.
 -- *If the key is already present in the map, the value is not modified*
 --
-insert :: JA a => Key -> a -> JudyL a -> IO ()
+insert :: JE a => Key -> a -> JudyL a -> IO ()
 insert k v j = do
     withForeignPtr (unJudyL j) $ \p -> do
         v_ptr <- c_judy_lins p (fromIntegral k) nullError
@@ -227,7 +243,7 @@ foreign import ccall unsafe "JudyLGet"
     c_judy_lget :: JudyL_ -> Key -> JError -> IO (Ptr Word)
 
 -- | Lookup a value associated with a key in the JudyL array.
-lookup :: JA a => Key -> JudyL a -> IO (Maybe a)
+lookup :: JE a => Key -> JudyL a -> IO (Maybe a)
 lookup k j = do
     withForeignPtr (unJudyL j) $ \p -> do
         q     <- peek p -- get the actual judy array
@@ -330,6 +346,7 @@ judyErrorPtr = c_judy_error_ptr
 
 -- judyErrorPtr :: Ptr Word
 -- judyErrorPtr = Ptr (int2Addr## (word2Int## (not## (int2Word## 0##))))
+                           -- wordPtrToPtr
 -- {-# INLINE judyErrorPtr #-}
 
 -- | The error pointer. maxBound :: Word. We try hard to get this to inline.
@@ -340,78 +357,111 @@ judyErrorPtr = Ptr (case (#const PJERR) of I## i## -> int2Addr## i##)
 
 
 ------------------------------------------------------------------------
--- The JA element class.
+-- The JE element class.
 
 --
 -- | Class of things that can be stored in the JudyL array.
 -- You need to be able to convert the structure to a Word value,
 -- or a word-sized pointer.
 --
-class JA a where
+class JE a where
+    -- | Convert the Haskell value to a word-sized type that may be stored in a JudyL
     toWord   :: a -> IO Word
+    -- | Reconstruct the Haskell value from the word-sized type.
     fromWord :: Word -> IO a
 
 ------------------------------------------------------------------------
 
-instance JA () where
+instance JE () where
     toWord   () = return 0
     fromWord _  = return ()
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Bool where
-    toWord   b = return (fromIntegral (fromEnum b))
-    fromWord n = return (toEnum (fromIntegral n))
+instance JE Bool where
+    toWord     = return . fromIntegral . fromEnum
+    fromWord   = return . toEnum . fromIntegral
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JE Ordering where
+    toWord     = return . fromIntegral . fromEnum
+    fromWord   = return . toEnum . fromIntegral
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
 ------------------------------------------------------------------------
 
-instance JA Word where
+instance JE Word where
     toWord   w = return w
     fromWord w = return w
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Int where
+instance JE Int where
     toWord   w = return (fromIntegral w)
     fromWord w = return (fromIntegral w)
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Int8 where
+instance JE Int8 where
     toWord   w = return (fromIntegral w)
     fromWord w = return (fromIntegral w)
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Int16 where
+instance JE Int16 where
     toWord   w = return (fromIntegral w)
     fromWord w = return (fromIntegral w)
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Int32 where
+instance JE Int32 where
     toWord   w = return (fromIntegral w)
     fromWord w = return (fromIntegral w)
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Word8 where
+instance JE Word8 where
     toWord   w = return (fromIntegral w)
     fromWord w = return (fromIntegral w)
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Word16 where
+instance JE Word16 where
     toWord   w = return (fromIntegral w)
     fromWord w = return (fromIntegral w)
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
-instance JA Word32 where
-    toWord   w = return (fromIntegral w)
-    fromWord w = return (fromIntegral w)
+instance JE Word32 where
+    toWord   = return . fromIntegral
+    fromWord = return . fromIntegral
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+instance JE Char where
+    toWord   = return . fromIntegral . ord
+    fromWord = return . chr . fromIntegral
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+------------------------------------------------------------------------
+-- strict bytestrings may be stored.
+--
+-- TODO: Quite a bit slower than using an IntMap ( see C.hs , D.hs )
+--
+
+instance JE S.ByteString where
+    toWord b   = do
+        p <- newStablePtr b
+        case castStablePtrToPtr p of
+             Ptr a## -> return $! W## (int2Word## (addr2Int## a##))
+
+    fromWord w = do
+        case fromIntegral w of
+             I## i## -> case int2Addr## i## of
+                     a## -> deRefStablePtr (castPtrToStablePtr (Ptr a##))
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
