@@ -23,7 +23,7 @@ library
 
     ghc-options:     -Wall -fvia-C -O2
     cc-options:      -O3
-    build-depends:   base, ghc-prim
+    build-depends:   base < 10
 
     extra-libraries:  Judy
 
