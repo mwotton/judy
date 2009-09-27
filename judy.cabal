@@ -1,5 +1,5 @@
 name:            judy
-version:         0.2
+version:         0.2.1
 homepage:        http://code.haskell.org/~dons/code/judy
 synopsis:        Fast, scalable, mutable dynamic arrays, maps and hashes
 description:     Fast, scalable, mutable dynamic arrays, maps and hashes
