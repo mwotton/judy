@@ -492,10 +492,10 @@ memoryError = error "Data.Judy: memory error with JudyL"
 
 ------------------------------------------------------------------------
 --
--- * Could be any Storable
--- * Could be any Haskell value thanks to StablePtr
--- * ST-based interface
--- * Freeze/Pure interface.
+-- - Could be any Storable
+-- - Could be any Haskell value thanks to StablePtr
+-- - ST-based interface
+-- - Freeze/Pure interface.
 --
 -- TODO: make it thread safe.
 --
@@ -508,4 +508,4 @@ memoryError = error "Data.Judy: memory error with JudyL"
 -- Fast bytestrings.
 -- Performance benchmarks.
 -- Type families to pick different underlying representations.
--
+--
