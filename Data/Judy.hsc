@@ -75,6 +75,10 @@ module Data.Judy (
     , Data.Judy.findMin
     , Data.Judy.findMax
 
+    -- * Conversion
+    , Data.Judy.keys
+    , Data.Judy.elems
+
 -- memoryUsed
 
     -- * Judy-storable types
@@ -86,6 +90,8 @@ module Data.Judy (
 import Control.Concurrent
 #endif
 import Control.Applicative ((<$>))
+
+import System.IO.Unsafe
 
 import Foreign hiding (new)
 import Foreign.C.Types
@@ -433,6 +439,7 @@ size m = do
 ------------------------------------------------------------------------
 -- Iteration
 
+
 -- |
 -- > JLF(PValue, PJLArray, Index) // JudyLFirst()
 --
@@ -504,6 +511,100 @@ findMax m = do
                     k <- peek k_ptr
                     return . Just $! (k, v)
 {-# INLINE findMax #-}
+
+------------------------------------------------------------------------
+
+-- | Return all keys of the map, /lazily/, in ascending order. 
+keys :: JudyL a -> IO [Key]
+keys m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        q <- peek p -- get the actual judy array
+
+        -- Lazily loop through the keys
+        let go i = unsafeInterleaveIO (do
+                     -- dellocate
+                     r <- alloca $ \k_ptr -> do
+                         poke k_ptr i
+                         v_ptr <- c_judy_lnext q k_ptr nullError
+                         if v_ptr == nullPtr
+                            then return Nothing
+                            else do
+                                k <- peek k_ptr
+                                return (Just k)
+
+                     case r of
+                          Nothing -> return []
+                          Just k  -> do xs <- go k
+                                        return (k:xs)
+                   )
+
+
+        -- Get the ball rolling with the first valid key
+        r <- alloca $ \k_ptr -> do
+                poke k_ptr 0
+                v_ptr <- c_judy_lfirst q k_ptr nullError
+                if v_ptr == nullPtr
+                   then return Nothing
+                   else do
+                        k <- peek k_ptr
+                        return $! Just k
+        case r of
+             Nothing -> return []
+             Just k  -> do
+                 xs <- go k
+                 return (k : xs)
+
+-- | Return all elems of the map, /lazily/, in ascending order. 
+elems :: JE a => JudyL a -> IO [a]
+elems m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        q <- peek p -- get the actual judy array
+
+        -- Lazily loop through the keys
+        let go i = unsafeInterleaveIO (do
+                     -- dellocate
+                     r <- alloca $ \k_ptr -> do
+                         poke k_ptr i
+                         v_ptr <- c_judy_lnext q k_ptr nullError
+                         if v_ptr == nullPtr
+                            then return Nothing
+                            else do
+                                k <- peek k_ptr
+                                v <- fromWord =<< peek v_ptr
+                                return (Just (k,v))
+
+                     case r of
+                          Nothing     -> return []
+                          Just (k,v)  -> do xs <- go k
+                                            return (v:xs)
+                   )
+
+
+        -- Get the ball rolling with the first valid key
+        r <- alloca $ \k_ptr -> do
+                poke k_ptr 0
+                v_ptr <- c_judy_lfirst q k_ptr nullError
+                if v_ptr == nullPtr
+                   then return Nothing
+                   else do
+                        k <- peek k_ptr
+                        v <- fromWord =<< peek v_ptr
+                        return (Just (k,v))
+        case r of
+             Nothing -> return []
+             Just (k,v)  -> do
+                 xs <- go k
+                 return (v : xs)
 
 ------------------------------------------------------------------------
 -- Judy errors
