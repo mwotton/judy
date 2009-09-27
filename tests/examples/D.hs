@@ -1,14 +1,22 @@
 import Control.Monad
-import qualified Data.Judy as J
 import qualified Data.IntMap as I
 import Data.List
 
-import Control.Monad
-import qualified Data.Judy as J
+import qualified Data.ByteString.Char8 as S
 
 main = do
-   j <- J.new :: IO (J.JudyL Int)
-   forM_ [1..100000000] $ \n -> J.insert n (fromIntegral n :: Int) j
+   s <- S.readFile "x"
+
+   let ls = S.lines s
+
+
+   let m = foldl' (\m (v,k) ->  I.insert k v m)
+                I.empty
+                (zip (S.lines s) [1..])
+
+   print (I.size m)
+
+   print $ I.lookup 52840 m
 
 
 {-

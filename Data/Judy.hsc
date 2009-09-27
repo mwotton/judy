@@ -217,9 +217,10 @@ insert k v j = do
     withForeignPtr (unJudyL j) $ \p -> do
         v_ptr <- c_judy_lins p (fromIntegral k) nullError
         if v_ptr == judyErrorPtr
-            then error "Data.Judy.insert: memory error with JudyL"
+            then memoryError
             else poke v_ptr =<< toWord v
 {-# INLINE insert #-}
+
 
 -- TODO: fuse construction with uvectors.
 
@@ -249,7 +250,7 @@ lookup k j = do
         q     <- peek p -- get the actual judy array
         v_ptr <- c_judy_lget q (fromIntegral k) nullError
         if v_ptr == judyErrorPtr
-            then error "Data.Judy.lookup: JudyL memory error"
+            then memoryError
             else if v_ptr == nullPtr
                     then return Nothing
                     else do
@@ -276,8 +277,7 @@ delete :: Key -> JudyL a -> IO ()
 delete k j = do
     withForeignPtr (unJudyL j) $ \p -> do
         i <- c_judy_ldel p (fromIntegral k) nullError
-        if i == judyError then error "Data.Judy.delete: JudyL memory error"
-                          else return ()
+        if i == judyError then memoryError else return ()
 {-# INLINE delete #-}
 
 
@@ -464,6 +464,12 @@ instance JE S.ByteString where
                      a## -> deRefStablePtr (castPtrToStablePtr (Ptr a##))
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
+
+------------------------------------------------------------------------
+
+memoryError :: a
+memoryError = error "Data.Judy: memory error with JudyL"
+{-# NOINLINE memoryError #-}
 
 ------------------------------------------------------------------------
 --
