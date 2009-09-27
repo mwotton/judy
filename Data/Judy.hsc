@@ -51,23 +51,23 @@
 module Data.Judy (
 
     -- * Basic types
-    JudyL, Key,
+    JudyL, Key
 
     -- * Operations
-    Data.Judy.new,
-    -- size
-    Data.Judy.insert,
+    , Data.Judy.new
+    , Data.Judy.size
+    , Data.Judy.insert
     -- insertWith
-    Data.Judy.lookup,
+    , Data.Judy.lookup
     -- member
-    Data.Judy.delete,
+    , Data.Judy.delete
     -- adjust
     -- update
 
 --    memoryUsed
 
     -- * Judy-storable types
-    JE(..),
+    , JE(..)
 
   ) where
 
@@ -124,9 +124,12 @@ type Key  = Word
 ------------------------------------------------------------------------
 -- JudyL Arrays
 
--- | A JudyL array is a finite map from Word to Word values. A value
--- is addressed by a key (Key). The array may be sparse, and the key may
+-- | A JudyL array is a finite map from Word to Word values.
+--    
+-- A value is addressed by a key. The array may be sparse, and the key may
 -- be any word-sized value. There are no duplicate keys.
+--
+-- Values may be any instance of the JE class.
 --
 newtype JudyL a = JudyL { unJudyL :: ForeignPtr JudyL_ }
     deriving Show
@@ -138,7 +141,7 @@ data JudyLArray
 -- | Allocate a new empty JudyL array. A finalizer is associated with
 -- the JudyL array, that will free it automatically once the last
 -- reference has been dropped. Note that if you store pointers in the
--- Judy array we have no way of deallocating those. You need to track
+-- Judy array we have no way of deallocating those -- you'll need to track
 -- those yourself (e.g. via StableName or ForeignPtr).
 --
 -- The Haskell GC will track references to the foreign resource, but the 
@@ -210,7 +213,7 @@ foreign import ccall unsafe "JudyLIns"
     c_judy_lins :: Ptr JudyL_ -> Key -> JError -> IO (Ptr Word)
 
 -- | Insert a key and value pair into the JudyL array.
--- *If the key is already present in the map, the value is not modified*
+-- Any existing key will be overwritten.
 --
 insert :: JE a => Key -> a -> JudyL a -> IO ()
 insert k v j = do
@@ -220,7 +223,6 @@ insert k v j = do
             then memoryError
             else poke v_ptr =<< toWord v
 {-# INLINE insert #-}
-
 
 -- TODO: fuse construction with uvectors.
 
@@ -243,7 +245,8 @@ insert k v j = do
 foreign import ccall unsafe "JudyLGet"
     c_judy_lget :: JudyL_ -> Key -> JError -> IO (Ptr Word)
 
--- | Lookup a value associated with a key in the JudyL array.
+-- | Lookup a value associated with a key in the JudyL array. Return
+-- Nothing if no value is found.
 lookup :: JE a => Key -> JudyL a -> IO (Maybe a)
 lookup k j = do
     withForeignPtr (unJudyL j) $ \p -> do
@@ -290,6 +293,22 @@ delete k j = do
 -- count. To count all indexes present in a JudyL array, use:
 --
 -- > JLC(Rc_word, PJLArray, 0, -1);
+--
+-- The type is:
+--
+-- > JudyLCount(PJLArray, Index1, Index2, &JError)
+--
+foreign import ccall unsafe "JudyLCount"
+    c_judy_lcount :: JudyL_ -> Key -> Key -> JError -> IO CInt
+
+-- | /O(1)/, size. The number of elements in the map.
+size :: JudyL a -> IO Int
+size j = do
+    withForeignPtr (unJudyL j) $ \p -> do
+        q <- peek p -- get the actual judy array
+        r <- c_judy_lcount q 0 (-1) nullError
+        return $! fromIntegral r
+{-# INLINE size #-}
 
 -- TODO: fromList
 -- TODO: toList
@@ -489,4 +508,4 @@ memoryError = error "Data.Judy: memory error with JudyL"
 -- Fast bytestrings.
 -- Performance benchmarks.
 -- Type families to pick different underlying representations.
---
+-

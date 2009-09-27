@@ -1,4 +1,11 @@
- - Need C shims to the macros?
- - Benchmark
- - Measure knuc hashtable benchmark.
+First
 
+* add size, keys, elems
+* measure lookup, delete
+* an ST interface
+* benchmark with randomized input
+
+* measure StablePtr cost.
+* pinned memory version for bytestrings.
+
+Bind to JudyHS
