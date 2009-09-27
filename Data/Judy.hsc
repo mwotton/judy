@@ -58,6 +58,7 @@ module Data.Judy (
 
     -- * Operations
     , Data.Judy.new
+    , Data.Judy.null
     , Data.Judy.size
     , Data.Judy.insert
     , Data.Judy.lookup
@@ -77,6 +78,7 @@ module Data.Judy (
 #if !defined(UNSAFE)
 import Control.Concurrent
 #endif
+import Control.Applicative ((<$>))
 
 import Foreign hiding (new)
 import Foreign.C.Types
@@ -353,6 +355,11 @@ delete k m = do
 --
 foreign import ccall unsafe "JudyLCount"
     c_judy_lcount :: JudyL_ -> Key -> Key -> JError -> IO CInt
+
+-- | /O(1), null. Is the map empty? 
+null :: JudyL a -> IO Bool
+null m = (== 0) <$> size m
+{-# INLINE null #-}
 
 -- | /O(1)/, size. The number of elements in the map.
 size :: JudyL a -> IO Int
