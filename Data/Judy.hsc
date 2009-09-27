@@ -60,10 +60,10 @@ module Data.Judy (
     , Data.Judy.new
     , Data.Judy.size
     , Data.Judy.insert
-    -- insertWith
     , Data.Judy.lookup
-    -- member
+    , Data.Judy.member
     , Data.Judy.delete
+
     -- adjust
     -- update
 
@@ -291,6 +291,23 @@ lookup k m = do
                         v_word <- peek v_ptr
                         return . Just =<< fromWord v_word
 {-# INLINE lookup #-}
+
+-- | Is the key a member of the map?
+member :: Key -> JudyL a -> IO Bool
+member k m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        q     <- peek p -- get the actual judy array
+        v_ptr <- c_judy_lget q (fromIntegral k) nullError
+        if v_ptr == judyErrorPtr
+            then memoryError
+            else return $! v_ptr /= nullPtr
+{-# INLINE member #-}
+
 
 -- > JudyLDel(&PJLArray, Index, &JError)
 --
@@ -533,7 +550,6 @@ memoryError = error "Data.Judy: memory error with JudyL"
 
 ------------------------------------------------------------------------
 --
--- - Could be any Storable
 -- - Could be any Haskell value thanks to StablePtr
 -- - ST-based interface
 -- - Freeze/Pure interface.

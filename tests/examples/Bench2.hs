@@ -18,29 +18,29 @@ main = do
     print "Setting up..."
 --    judy100k `seq` judy1M `seq` judy10M `seq` return ()
 --  judy10k `seq` return ()
-    judy100k `seq` return ()
+--    judy100k `seq` return ()
 --    judy1M `seq` return ()
---    judy10M `seq` return ()
+    judy10M `seq` return ()
     print "done"
 
     defaultMainWith myConfig [
 --        bench "delete 10k"  (testit 10000)
-          bench "delete 100k" (testit 100000)
+--          bench "delete 100k" (testit 100000)
 --      bench "delete 1M"   (testit 1000000)
---        bench "delete 10M"  (testit 10000000)
+        bench "member 10M"  (testit 10000000)
         ]
 
-testit :: Int -> IO ()
+testit :: Int -> IO Bool
 testit n = do
     g  <- getStdGen
     k  <- random g :: IO Word
-    v  <- J.delete k (h n)
+    v  <- J.member k (h n)
     return v
   where
      --   h 10000 = judy10k
-          h 100000 = judy100k
+     --   h 100000 = judy100k
      --   h 1000000 = judy1M
-     --   h 10000000 = judy10M
+        h 10000000 = judy10M
 
 ------------------------------------------------------------------------
 -- construction.
@@ -57,6 +57,7 @@ judy10k  = unsafePerformIO $ do
    n = truncate 1e5
 -}
 
+{-
 judy100k :: J.JudyL Int
 judy100k  = unsafePerformIO $ do
    g  <- getStdGen
@@ -66,6 +67,7 @@ judy100k  = unsafePerformIO $ do
    return j
  where
    n = truncate 1e6
+-}
 
 {-
 judy1M :: J.JudyL Int
@@ -79,7 +81,6 @@ judy1M    = unsafePerformIO $ do
    n = truncate 1e7
    -}
 
-{-
 judy10M :: J.JudyL Int
 judy10M   = unsafePerformIO $ do
    g  <- getStdGen
@@ -89,7 +90,6 @@ judy10M   = unsafePerformIO $ do
    return j
  where
    n = truncate 1e8
--}
 
 ------------------------------------------------------------------------
 
