@@ -56,13 +56,18 @@ module Data.Judy (
     -- * Basic types
     JudyL, Key
 
-    -- * Operations
+    -- * Construction
     , Data.Judy.new
+
+    -- * Queries
     , Data.Judy.null
     , Data.Judy.size
-    , Data.Judy.insert
-    , Data.Judy.lookup
     , Data.Judy.member
+    , Data.Judy.lookup
+
+    -- * Insertion and removal
+    , Data.Judy.insert
+    , Data.Judy.insertWith
     , Data.Judy.delete
 
     -- adjust
@@ -252,7 +257,30 @@ insert k v m = do
             else poke v_ptr =<< toWord v
 {-# INLINE insert #-}
 
--- TODO: fuse construction with uvectors.
+-- | Insert with a function, combining new value and old value.
+--
+-- * If the key does not exist in the map, the value will be inserted.
+-- * If the key does exist, the combining function will be applied: f new old
+--
+insertWith :: JE a => (a -> a -> a) -> Key -> a -> JudyL a -> IO ()
+insertWith f k v m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        v_ptr <- c_judy_lins p (fromIntegral k) nullError
+        if v_ptr == judyErrorPtr
+            then memoryError
+            else if v_ptr == nullPtr
+                    -- not in the map
+                    then poke v_ptr =<< toWord v
+                    else do
+                        old_v <- fromWord =<< peek v_ptr
+                        new_v <- toWord (f v old_v)
+                        poke v_ptr new_v
+{-# INLINE insertWith #-}
 
 ------------------------------------------------------------------------
 
