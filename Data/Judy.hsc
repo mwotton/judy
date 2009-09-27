@@ -67,13 +67,15 @@ module Data.Judy (
 
     -- * Insertion and removal
     , Data.Judy.insert
-    , Data.Judy.insertWith
+--    , Data.Judy.insertWith
     , Data.Judy.delete
+    , Data.Judy.adjust
 
-    -- adjust
-    -- update
+    -- * Min/Max
+    , Data.Judy.findMin
+    , Data.Judy.findMax
 
---    memoryUsed
+-- memoryUsed
 
     -- * Judy-storable types
     , JE(..)
@@ -257,6 +259,7 @@ insert k v m = do
             else poke v_ptr =<< toWord v
 {-# INLINE insert #-}
 
+{-
 -- | Insert with a function, combining new value and old value.
 --
 -- * If the key does not exist in the map, the value will be inserted.
@@ -273,6 +276,7 @@ insertWith f k v m = do
         v_ptr <- c_judy_lins p (fromIntegral k) nullError
         if v_ptr == judyErrorPtr
             then memoryError
+                --- WRONG!
             else if v_ptr == nullPtr
                     -- not in the map
                     then poke v_ptr =<< toWord v
@@ -281,6 +285,7 @@ insertWith f k v m = do
                         new_v <- toWord (f v old_v)
                         poke v_ptr new_v
 {-# INLINE insertWith #-}
+-}
 
 ------------------------------------------------------------------------
 
@@ -318,8 +323,8 @@ lookup k m = do
             else if v_ptr == nullPtr
                     then return Nothing
                     else do
-                        v_word <- peek v_ptr
-                        return . Just =<< fromWord v_word
+                        v <- fromWord =<< peek v_ptr
+                        return . Just $! v
 {-# INLINE lookup #-}
 
 -- | Is the key a member of the map?
@@ -337,6 +342,28 @@ member k m = do
             then memoryError
             else return $! v_ptr /= nullPtr
 {-# INLINE member #-}
+
+-- | Update a value at a specific key with the result of the provided
+-- function. When the key is not a member of the map, no change is made.
+adjust :: JE a => (a -> a) -> Key -> JudyL a -> IO ()
+adjust f k m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        q     <- peek p -- get the actual judy array
+        v_ptr <- c_judy_lget q (fromIntegral k) nullError
+        if v_ptr == judyErrorPtr
+            then memoryError
+            else if v_ptr == nullPtr
+                    then return ()
+                    else do
+                        old_v <- fromWord =<< peek v_ptr
+                        new_v <- toWord (f old_v)
+                        poke v_ptr new_v
+{-# INLINE adjust #-}
 
 
 -- > JudyLDel(&PJLArray, Index, &JError)
@@ -403,9 +430,80 @@ size m = do
         return $! fromIntegral r
 {-# INLINE size #-}
 
--- TODO: fromList
--- TODO: toList
--- TODO: update
+------------------------------------------------------------------------
+-- Iteration
+
+-- |
+-- > JLF(PValue, PJLArray, Index) // JudyLFirst()
+--
+-- Search (inclusive) for the first index present that is equal to or greater
+-- than the passed Index. (Start with Index = 0 to find the first index in the
+-- array.) JLF() is typically used to begin a sorted-order scan of the indexes
+-- present in a JudyL array.
+--
+-- If successful, Index is returned set to the found index, and PValue is
+-- returned set to a pointer to Index's Value. If unsuccessful, PValue is returned
+-- set to NULL, and Index contains no useful information. PValue must be tested
+-- for non-NULL prior to using Index, since a search failure is possible.
+--
+foreign import ccall unsafe "JudyLFirst"
+    c_judy_lfirst :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
+
+foreign import ccall unsafe "JudyLNext"
+    c_judy_lnext :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
+
+foreign import ccall unsafe "JudyLPrev"
+    c_judy_lprev :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
+
+foreign import ccall unsafe "JudyLLast"
+    c_judy_llast :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
+
+
+-- | findMin. Find the minimal key, and its associated value, in the map.
+-- Nothing if the map is empty.
+--
+findMin :: JE a => JudyL a -> IO (Maybe (Key, a))
+findMin m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        q <- peek p -- get the actual judy array
+        alloca $ \k_ptr -> do
+            poke k_ptr 0 -- start at 0
+            v_ptr <- c_judy_lfirst q k_ptr nullError
+            if v_ptr == nullPtr
+                then return Nothing -- empty
+                else do
+                    v <- fromWord =<< peek v_ptr
+                    k <- peek k_ptr
+                    return . Just $! (k, v)
+{-# INLINE findMin #-}
+
+-- | findMax. Find the maximal key, and its associated value, in the map.
+-- Nothing if the map is empty.
+--
+findMax :: JE a => JudyL a -> IO (Maybe (Key, a))
+findMax m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        q <- peek p -- get the actual judy array
+        alloca $ \k_ptr -> do
+            poke k_ptr (-1) -- start at 0
+            v_ptr <- c_judy_llast q k_ptr nullError
+            if v_ptr == nullPtr
+                then return Nothing -- empty
+                else do
+                    v <- fromWord =<< peek v_ptr
+                    k <- peek k_ptr
+                    return . Just $! (k, v)
+{-# INLINE findMax #-}
 
 ------------------------------------------------------------------------
 -- Judy errors
@@ -475,6 +573,12 @@ judyErrorPtr = Ptr (case (#const PJERR) of I## i## -> int2Addr## i##)
 -- | Class of things that can be stored in the JudyL array.
 -- You need to be able to convert the structure to a Word value,
 -- or a word-sized pointer.
+--
+-- /Note: that it is possible to convert any Haskell value into a JE-type,
+-- via a StablePtr. This allocates an entry in the runtime's stable
+-- pointer table, giving you a pointer that may be passed to C, and that
+-- when dereferenced in Haskell will yield the original Haskell value.
+-- See the source for an example of this with strict bytestrings./
 --
 class JE a where
     -- | Convert the Haskell value to a word-sized type that may be stored in a JudyL
