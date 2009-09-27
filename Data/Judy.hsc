@@ -47,7 +47,10 @@
 -- > Just 100
 -- > ./A  1.95s user 0.08s system 99% cpu 2.028 total
 --
-
+--    /By default this library is threadsafe/.
+--    
+--    /Multiple Haskell threads may operate on the arrays simultaneously. You can compile without locks if you know you're running in a single threaded fashion with: cabal install -funsafe/
+--
 module Data.Judy (
 
     -- * Basic types
@@ -70,6 +73,10 @@ module Data.Judy (
     , JE(..)
 
   ) where
+
+#if !defined(UNSAFE)
+import Control.Concurrent
+#endif
 
 import Foreign hiding (new)
 import Foreign.C.Types
@@ -124,19 +131,26 @@ type Key  = Word
 ------------------------------------------------------------------------
 -- JudyL Arrays
 
--- | A JudyL array is a finite map from Word to Word values.
+-- | A JudyL array is a mutable, finite map from Word to Word values.
+-- It is threadsafe by default.
 --    
 -- A value is addressed by a key. The array may be sparse, and the key may
 -- be any word-sized value. There are no duplicate keys.
 --
 -- Values may be any instance of the JE class.
 --
-newtype JudyL a = JudyL { unJudyL :: ForeignPtr JudyL_ }
-    deriving Show
+newtype JudyL a =
+            JudyL { unJudyL ::
+#if !defined(UNSAFE)
+                        MVar
+#endif
+                         (ForeignPtr JudyL_) }
 
 type JudyL_ = Ptr JudyLArray
 
 data JudyLArray
+
+instance Show (JudyL a) where show _ = "<Judy a>"
 
 -- | Allocate a new empty JudyL array. A finalizer is associated with
 -- the JudyL array, that will free it automatically once the last
@@ -157,7 +171,14 @@ new = do
     -- note that the Haskell GC doesn't really know costly the arrays are.
     addForeignPtrFinalizer c_judyl_free_ptr fp
     withForeignPtr fp $ \p -> poke p (castPtr nullPtr)
+
+#if defined(UNSAFE)
     return $! JudyL fp
+#else
+    -- and make it threadsafe.
+    mv <- newMVar fp
+    return $! JudyL mv
+#endif
 
 ------------------------------------------------------------------------
 
@@ -216,8 +237,13 @@ foreign import ccall unsafe "JudyLIns"
 -- Any existing key will be overwritten.
 --
 insert :: JE a => Key -> a -> JudyL a -> IO ()
-insert k v j = do
-    withForeignPtr (unJudyL j) $ \p -> do
+insert k v m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
         v_ptr <- c_judy_lins p (fromIntegral k) nullError
         if v_ptr == judyErrorPtr
             then memoryError
@@ -248,8 +274,13 @@ foreign import ccall unsafe "JudyLGet"
 -- | Lookup a value associated with a key in the JudyL array. Return
 -- Nothing if no value is found.
 lookup :: JE a => Key -> JudyL a -> IO (Maybe a)
-lookup k j = do
-    withForeignPtr (unJudyL j) $ \p -> do
+lookup k m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
         q     <- peek p -- get the actual judy array
         v_ptr <- c_judy_lget q (fromIntegral k) nullError
         if v_ptr == judyErrorPtr
@@ -277,8 +308,13 @@ foreign import ccall unsafe "JudyLDel"
 -- | Delete the Index\/Value pair from the JudyL array.
 --
 delete :: Key -> JudyL a -> IO ()
-delete k j = do
-    withForeignPtr (unJudyL j) $ \p -> do
+delete k m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
         i <- c_judy_ldel p (fromIntegral k) nullError
         if i == judyError then memoryError else return ()
 {-# INLINE delete #-}
@@ -303,8 +339,13 @@ foreign import ccall unsafe "JudyLCount"
 
 -- | /O(1)/, size. The number of elements in the map.
 size :: JudyL a -> IO Int
-size j = do
-    withForeignPtr (unJudyL j) $ \p -> do
+size m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
         q <- peek p -- get the actual judy array
         r <- c_judy_lcount q 0 (-1) nullError
         return $! fromIntegral r

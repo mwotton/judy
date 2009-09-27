@@ -13,6 +13,10 @@ cabal-version:   >= 1.2.0
 build-type:      Simple
 tested-with:     GHC ==6.8.2
 
+flag unsafe
+    description: Compile the library without locks. Code may be faster, but not threadsafe
+    default: False
+
 library
     exposed-modules: Data.Judy
 
@@ -34,3 +38,5 @@ library
     includes:         haskell-judy.h
     install-includes: haskell-judy.h
 
+    if flag(unsafe)
+        cpp-options: -DUNSAFE
