@@ -8,8 +8,9 @@ import qualified Data.Judy as J
 
 main = do
    j <- J.new :: IO (J.JudyL Int)
-   forM_ [1..10000000] $ \n -> J.insert n (fromIntegral n :: Int) j
-   print =<< J.size j
+   forM_ [1..10] $ \n -> J.insert (fromIntegral n) n j
+   J.insert (-1) 7 j
+   print =<< J.elems j
 
 
 {-

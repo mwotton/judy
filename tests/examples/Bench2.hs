@@ -27,15 +27,12 @@ main = do
 --        bench "delete 10k"  (testit 10000)
 --          bench "delete 100k" (testit 100000)
 --      bench "delete 1M"   (testit 1000000)
-        bench "member 10M"  (testit 10000000)
+        bench "findMax 10M"  (testit 10000000)
         ]
 
-testit :: Int -> IO Bool
+testit :: Int -> IO (Maybe (J.Key, Int))
 testit n = do
-    g  <- getStdGen
-    k  <- random g :: IO Word
-    v  <- J.member k (h n)
-    return v
+    J.findMax (h n)
   where
      --   h 10000 = judy10k
      --   h 100000 = judy100k

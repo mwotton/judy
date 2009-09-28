@@ -27,7 +27,7 @@ main = defaultMain [
 
 --        bench "insert hash 1k"   (testit     1000)
 --       ,bench "insert hash 100k" (testit   100000)
-       bench "insert IntMap 10M"  (\(_::Int) -> testit 10000000)
+       bench "findMax IntMap 10M"  (\(_::Int) -> testit 10000000)
 
        {-
        ,bench "insert 10k"  (testit 10000)
