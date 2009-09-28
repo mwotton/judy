@@ -790,22 +790,3 @@ instance JE S.ByteString where
 memoryError :: a
 memoryError = error "Data.Judy: memory error with JudyL"
 {-# NOINLINE memoryError #-}
-
-------------------------------------------------------------------------
---
--- - Could be any Haskell value thanks to StablePtr
--- - ST-based interface
--- - Freeze/Pure interface.
---
--- TODO: make it thread safe.
---
--- TODO: hash interface based on the document (cache hash, C function).
--- IntMap interface.
--- Split out basic interface.
---
--- Binary instance?
---
--- Fast bytestrings.
--- Performance benchmarks.
--- Type families to pick different underlying representations.
---
