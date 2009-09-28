@@ -16,40 +16,48 @@
 -- data sets.
 -- 
 -- The memory used by a Judy array is nearly proportional to the
--- population (number of elements). Note that as Judy is allocated on
--- C language side, GHC's profiling system won't report memory use by
--- Judy arrays.
+-- population (number of elements).
 --
 -- For further references to the implementation, see:
 --
 -- * <http://en.wikipedia.org/wiki/Judy_array>
 --
--- Building a simple word-index table. About 4x faster than using an 'IntMap'
+-- /Examples/:
 --
--- >
--- > import Control.Monad
+-- Generate 1 million random integers. Report the largest one we see.
+--
+-- > import System.Random.Mersenne
 -- > import qualified Data.Judy as J
+-- > import Control.Monad
 -- >
 -- > main = do
--- >    j <- J.new :: IO (J.JudyL Int)
--- >    forM_ [1..10000000] $ \n -> J.insert n (fromIntegral n :: Int) j
--- >    v <- J.lookup 100 j
--- >    print v
--- >
+-- >    g  <- getStdGen
+-- >    rs <- randoms g
+-- >    j  <- J.new :: IO (J.JudyL Int)
+-- >    forM_ (take 1000000 rs) $ \n ->
+-- >        J.insert n 1 j
+-- >    v  <- J.findMax j
+-- >    case v of
+-- >         Nothing    -> print "Done."
+-- >         Just (k,_) -> print k
 --
--- Running this:
+-- Compile it:
 --
--- > $ ghc -O2 --make A.hs
--- > [1 of 1] Compiling Main             ( A.hs, A.o )
--- > Linking A ...
+-- > $ ghc -O2 --make Test.hs
+-- 
+-- Running it:
+-- 
+-- > $ time ./Test
+-- > 18446712059962695226
+-- > ./Test  0.65s user 0.03s system 99% cpu 0.680 total
 --
--- > $ time ./A
--- > Just 100
--- > ./A  1.95s user 0.08s system 99% cpu 2.028 total
+-- /Notes/:
 --
---    /By default this library is threadsafe/.
+-- * /By default this library is threadsafe/.
 --    
---    /Multiple Haskell threads may operate on the arrays simultaneously. You can compile without locks if you know you're running in a single threaded fashion with: cabal install -funsafe/
+-- * /Multiple Haskell threads may operate on the arrays simultaneously. You can compile without locks if you know you're running in a single threaded fashion with: cabal install -funsafe/
+--
+-- Sun Sep 27 17:12:24 PDT 2009: The library has only lightly been tested.
 --
 module Data.Judy (
 
@@ -167,16 +175,15 @@ data JudyLArray
 
 instance Show (JudyL a) where show _ = "<Judy a>"
 
--- | Allocate a new empty JudyL array. A finalizer is associated with
--- the JudyL array, that will free it automatically once the last
--- reference has been dropped. Note that if you store pointers in the
--- Judy array we have no way of deallocating those -- you'll need to track
--- those yourself (e.g. via StableName or ForeignPtr).
+-- | Allocate a new empty JudyL array.
+--    
+-- A finalizer is associated with the JudyL array, that will cause the
+-- garbage collector to free it automatically once the last reference
+-- has been dropped on the Haskell side.
 --
--- The Haskell GC will track references to the foreign resource, but the 
--- foreign resource won't exert any heap pressure on the GC, meaning
--- that finalizers will be run much later than you expect. An explicit
--- 'performGC' can help with this.
+-- /Note: The Haskell GC will track references to the foreign resource, but the foreign resource won't exert any heap pressure on the GC, meaning that finalizers will be run much later than you expect. An explicit 'performGC' can help with this./
+--
+-- /Note: that if you store pointers in the Judy array we have no way of deallocating those -- you'll need to track those yourself (e.g. via StableName or ForeignPtr)/
 --
 new :: JE a => IO (JudyL a)
 new = do
@@ -417,7 +424,7 @@ delete k m = do
 foreign import ccall unsafe "JudyLCount"
     c_judy_lcount :: JudyL_ -> Key -> Key -> JError -> IO CInt
 
--- | /O(1), null. Is the map empty? 
+-- | /O(1)/, null. Is the map empty? 
 null :: JudyL a -> IO Bool
 null m = (== 0) <$> size m
 {-# INLINE null #-}
@@ -675,11 +682,7 @@ judyErrorPtr = Ptr (case (#const PJERR) of I## i## -> int2Addr## i##)
 -- You need to be able to convert the structure to a Word value,
 -- or a word-sized pointer.
 --
--- /Note: that it is possible to convert any Haskell value into a JE-type,
--- via a StablePtr. This allocates an entry in the runtime's stable
--- pointer table, giving you a pointer that may be passed to C, and that
--- when dereferenced in Haskell will yield the original Haskell value.
--- See the source for an example of this with strict bytestrings./
+-- /Note: that it is possible to convert any Haskell value into a JE-type, via a StablePtr. This allocates an entry in the runtime's stable pointer table, giving you a pointer that may be passed to C, and that when dereferenced in Haskell will yield the original Haskell value. See the source for an example of this with strict bytestrings./
 --
 class JE a where
     -- | Convert the Haskell value to a word-sized type that may be stored in a JudyL
