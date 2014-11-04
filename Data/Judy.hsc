@@ -109,7 +109,7 @@ import GHC.Ptr
 import GHC.Base
 import GHC.Prim
 import GHC.Word
-
+import Data.Char(chr)
 --
 -- For instances
 --

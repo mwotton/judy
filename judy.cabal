@@ -9,18 +9,20 @@ license-file:    LICENSE
 copyright:       (c) 2008, Don Stewart <dons@galois.com>
 author:          Don Stewart
 maintainer:      Don Stewart <dons@galois.com>
-cabal-version:   >= 1.2.0
+cabal-version:   >= 1.10
 build-type:      Simple
 tested-with:     GHC ==6.8.2
+
 
 flag unsafe
     description: Compile the library without locks. Code may be faster, but not threadsafe
     default: False
 
 library
+    default-language:    Haskell2010
     exposed-modules: Data.Judy
 
-    extensions:      CPP,
+    default-extensions:      CPP,
                      GeneralizedNewtypeDeriving,
                      EmptyDataDecls,
                      TypeSynonymInstances
@@ -40,3 +42,14 @@ library
 
     if flag(unsafe)
         cpp-options: -DUNSAFE
+
+test-suite tests
+
+  default-language:    Haskell2010
+  hs-source-dirs: test
+  main-is:       Spec.hs
+  type: exitcode-stdio-1.0
+  ghc-options: -Wall -threaded -rtsopts -O2
+  build-depends: base
+               , hspec
+               , judy
