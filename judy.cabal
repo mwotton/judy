@@ -53,3 +53,4 @@ test-suite tests
   build-depends: base
                , hspec
                , judy
+               , QuickCheck
