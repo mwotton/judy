@@ -14,7 +14,7 @@
 -- better than other data storage models such as skiplists, linked lists,
 -- binary, ternary, b-trees, or even hashing, and improves with very large
 -- data sets.
--- 
+--
 -- The memory used by a Judy array is nearly proportional to the
 -- population (number of elements).
 --
@@ -44,9 +44,9 @@
 -- Compile it:
 --
 -- > $ ghc -O2 --make Test.hs
--- 
+--
 -- Running it:
--- 
+--
 -- > $ time ./Test
 -- > 18446712059962695226
 -- > ./Test  0.65s user 0.03s system 99% cpu 0.680 total
@@ -54,7 +54,7 @@
 -- /Notes/:
 --
 -- * /By default this library is threadsafe/.
---    
+--
 -- * /Multiple Haskell threads may operate on the arrays simultaneously. You can compile without locks if you know you're running in a single threaded fashion with: cabal install -funsafe/
 --
 -- Sun Sep 27 17:12:24 PDT 2009: The library has only lightly been tested.
@@ -140,7 +140,7 @@ type Key  = Word
 -- pointer itself. This often leads to hard-to-debug programmatic errors.
 -- In practice, the macros allow the compiler to catch programming
 -- errors when pointers instead of addresses of pointers are passed.
--- 
+--
 -- The JudyL function calls have an additional parameter beyond those
 -- specified in the macro calls. This parameter is either a pointer to an
 -- error structure, or NULL (in which case the detailed error information
@@ -156,7 +156,7 @@ type Key  = Word
 
 -- | A JudyL array is a mutable, finite map from Word to Word values.
 -- It is threadsafe by default.
---    
+--
 -- A value is addressed by a key. The array may be sparse, and the key may
 -- be any word-sized value. There are no duplicate keys.
 --
@@ -176,7 +176,7 @@ data JudyLArray
 instance Show (JudyL a) where show _ = "<Judy a>"
 
 -- | Allocate a new empty JudyL array.
---    
+--
 -- A finalizer is associated with the JudyL array, that will cause the
 -- garbage collector to free it automatically once the last reference
 -- has been dropped on the Haskell side.
@@ -239,7 +239,7 @@ foreign import ccall "&hs_judyl_free"
 --
 -- JudyLIns : insert an index into a 'JudyL' array, returning a pointer
 -- to the value to store in the association table (which may be a
--- pointer) 
+-- pointer)
 --
 -- > JudyLIns(&PJLArray, Index, &JError)
 --
@@ -247,7 +247,7 @@ foreign import ccall "&hs_judyl_free"
 --
 -- > #define JLI(PValue, PJLArray, Index)  \
 -- >   PValue = JudyLIns(&PJLArray, Index, PJE0)
--- 
+--
 -- Insert an Index and Value into the JudyL array PJLArray. If the Index is
 -- successfully inserted, the Value is initialized to 0. If the Index was
 -- already present, the Value is not modified.
@@ -424,7 +424,7 @@ delete k m = do
 foreign import ccall unsafe "JudyLCount"
     c_judy_lcount :: JudyL_ -> Key -> Key -> JError -> IO CInt
 
--- | /O(1)/, null. Is the map empty? 
+-- | /O(1)/, null. Is the map empty?
 null :: JudyL a -> IO Bool
 null m = (== 0) <$> size m
 {-# INLINE null #-}
@@ -521,7 +521,7 @@ findMax m = do
 
 ------------------------------------------------------------------------
 
--- | Return all keys of the map, /lazily/, in ascending order. 
+-- | Return all keys of the map, /lazily/, in ascending order.
 keys :: JudyL a -> IO [Key]
 keys m = do
 #if !defined(UNSAFE)
@@ -566,7 +566,7 @@ keys m = do
                  xs <- go k
                  return (k : xs)
 
--- | Return all elems of the map, /lazily/, in ascending order. 
+-- | Return all elems of the map, /lazily/, in ascending order.
 elems :: JE a => JudyL a -> IO [a]
 elems m = do
 #if !defined(UNSAFE)
