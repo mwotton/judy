@@ -1,6 +1,6 @@
 name:            judy
-version:         0.2.1
-homepage:        http://code.haskell.org/~dons/code/judy
+version:         0.2.2
+homepage:        http://github.com/mwotton/judy
 synopsis:        Fast, scalable, mutable dynamic arrays, maps and hashes
 description:     Fast, scalable, mutable dynamic arrays, maps and hashes
 category:        Data
@@ -8,10 +8,10 @@ license:         BSD3
 license-file:    LICENSE
 copyright:       (c) 2008, Don Stewart <dons@galois.com>
 author:          Don Stewart
-maintainer:      Don Stewart <dons@galois.com>
+maintainer:      Mark Wotton <mwotton@gmail.com>
 cabal-version:   >= 1.10
 build-type:      Simple
-tested-with:     GHC ==6.8.2
+tested-with:     GHC ==7.8.3
 
 
 flag unsafe
