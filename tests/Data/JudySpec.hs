@@ -8,6 +8,7 @@ import           Test.QuickCheck
 import Data.List(nub, sortBy)
 import Data.Ord(comparing)
 import System.Mem(performGC)
+import Data.Word(Word)
 
 spec = describe "Data.Judy" $ do
   it "should be set to the correct value after setting" $
