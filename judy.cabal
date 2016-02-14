@@ -27,7 +27,7 @@ library
                      EmptyDataDecls,
                      TypeSynonymInstances
 
-    ghc-options:     -Wall -fvia-C -O2
+    ghc-options:     -Wall
     cc-options:      -O3
     build-depends:   base < 10,
                      ghc-prim,
@@ -49,7 +49,7 @@ test-suite tests
   hs-source-dirs: tests
   main-is:       Spec.hs
   type: exitcode-stdio-1.0
-  ghc-options: -Wall -threaded -rtsopts -O2
+  ghc-options: -Wall -threaded -rtsopts
   build-depends: base
                , hspec
                , judy
