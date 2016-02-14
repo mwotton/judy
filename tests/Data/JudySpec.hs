@@ -34,6 +34,9 @@ spec = describe "Data.Judy" $ do
         let sortedL = sortBy (comparing fst) al
         j <- J.new :: IO (J.JudyL Int)
         mapM_ (\(k,v) -> J.insert k v j) al
+        -- this is necessary to avoid running out of memory:
+        -- memory pressure on the C side will have no effect on the
+        -- ghc collector.
         performGC
         J.keys j `shouldReturn` map fst sortedL
 
