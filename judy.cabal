@@ -1,5 +1,5 @@
 name:            judy
-version:         0.2.3
+version:         0.2.4
 homepage:        http://github.com/mwotton/judy
 synopsis:        Fast, scalable, mutable dynamic arrays, maps and hashes
 description:     Fast, scalable, mutable dynamic arrays, maps and hashes

@@ -86,7 +86,7 @@ module Data.Judy (
     -- * Conversion
     , Data.Judy.keys
     , Data.Judy.elems
-
+    , Data.Judy.toList
 -- memoryUsed
 
     -- * Judy-storable types
@@ -565,6 +565,56 @@ keys m = do
              Just k  -> do
                  xs <- go k
                  return (k : xs)
+
+------------------------------------------------------------------------
+
+-- | Return all keys of the map, /lazily/, in ascending order.
+toList :: JE a => JudyL a -> IO [(Key,a)]
+toList m = do
+#if !defined(UNSAFE)
+    withMVar (unJudyL m) $ \m_ ->
+      withForeignPtr m_ $ \p -> do
+#else
+      withForeignPtr (unJudyL m)  $ \p -> do
+#endif
+        q <- peek p -- get the actual judy array
+
+        -- Lazily loop through the keys
+        let go i = unsafeInterleaveIO (do
+                     -- dellocate
+                     r <- alloca $ \k_ptr -> do
+                         poke k_ptr i
+                         v_ptr <- c_judy_lnext q k_ptr nullError
+                         if v_ptr == nullPtr
+                            then return Nothing
+                            else do
+                                k <- peek k_ptr
+                                v <- fromWord =<< peek v_ptr
+                                return (Just (k,v))
+
+                     case r of
+                          Nothing     -> return []
+                          Just (k,v)  -> do xs <- go k
+                                            return ((k,v):xs)
+                   )
+
+
+        -- Get the ball rolling with the first valid key
+        r <- alloca $ \k_ptr -> do
+                poke k_ptr 0
+                v_ptr <- c_judy_lfirst q k_ptr nullError
+                if v_ptr == nullPtr
+                   then return Nothing
+                   else do
+                        k <- peek k_ptr
+                        v <- fromWord =<< peek v_ptr
+                        return (Just (k,v))
+        case r of
+             Nothing -> return []
+             Just (k,v)  -> do
+                 xs <- go k
+                 return ((k,v) : xs)
+
 
 -- | Return all elems of the map, /lazily/, in ascending order.
 elems :: JE a => JudyL a -> IO [a]
