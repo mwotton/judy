@@ -568,7 +568,7 @@ keys m = do
 
 ------------------------------------------------------------------------
 
--- | Return all keys of the map, /lazily/, in ascending order.
+-- | Return keys and values of the map, /lazily/, in ascending order.
 toList :: JE a => JudyL a -> IO [(Key,a)]
 toList m = do
 #if !defined(UNSAFE)
