@@ -3,12 +3,15 @@ module Data.JudySpec where
 
 import           Control.Monad   (guard)
 import qualified Data.Judy       as J
+import           Data.List       (nub, sortBy)
+import           Data.Ord        (comparing)
+import           Data.Word       (Word)
+import           System.Mem      (performGC)
 import           Test.Hspec
 import           Test.QuickCheck
-import Data.List(nub, sortBy)
-import Data.Ord(comparing)
-import System.Mem(performGC)
-import Data.Word(Word)
+import Data.Maybe(isJust)
+import Control.Arrow((&&&))
+import Data.List(groupBy,partition)
 
 spec = describe "Data.Judy" $ do
   it "should be set to the correct value after setting" $
@@ -43,3 +46,29 @@ spec = describe "Data.Judy" $ do
 
         J.elems j `shouldReturn` map snd sortedL
         J.toList j `shouldReturn` sortedL
+
+  it "insertWith should be correct" $ do
+    -- bit ugly, but we don't have a Maybe instance for JE yet
+    let combine _ _ = (-1)
+
+    property $ \(values'::[(Word, Int)]) -> do
+      -- want lots of repeats, so we take the modulo of the key.
+      -- as noted above, because of the lack of a Maybe instance we
+      -- denote a collision with a negative number: therefore, all
+      -- values coming in must be positive.
+      let values = map (\(a,b) -> (a `mod` 20,abs b)) values'
+      j <- J.new :: IO (J.JudyL Int)
+      mapM_ ((\(k,v) -> J.insertWith combine k v j)) values
+      -- at this point, all repeated keys should have Nothing values
+      let (repeats, noRepeats) = (\(x,y) -> (map (fst . head) x,
+                                             map (fst . head) y))
+                                 $ partition (\x -> length x > 1)
+                                 $ groupBy (\a b -> fst a == fst b)
+                                 $ sortBy (comparing fst) values
+      repeatResults <- (`mapM` repeats) $ \k -> J.lookup k j
+      norepeatResults <- (`mapM` noRepeats) $ \k -> do
+        J.lookup k j
+      length repeatResults `shouldBe` length repeats
+      length norepeatResults `shouldBe` length noRepeats
+      repeatResults `shouldSatisfy` all (== Just (-1))
+      norepeatResults `shouldSatisfy` all (\(Just a) -> a >= 0)
