@@ -75,7 +75,7 @@ module Data.Judy (
 
     -- * Insertion and removal
     , Data.Judy.insert
---    , Data.Judy.insertWith
+    , Data.Judy.insertWith
     , Data.Judy.delete
     , Data.Judy.adjust
 
@@ -272,12 +272,10 @@ insert k v m = do
             else poke v_ptr =<< toWord v
 {-# INLINE insert #-}
 
-{-
 -- | Insert with a function, combining new value and old value.
 --
 -- * If the key does not exist in the map, the value will be inserted.
 -- * If the key does exist, the combining function will be applied: f new old
---
 insertWith :: JE a => (a -> a -> a) -> Key -> a -> JudyL a -> IO ()
 insertWith f k v m = do
 #if !defined(UNSAFE)
@@ -286,19 +284,19 @@ insertWith f k v m = do
 #else
       withForeignPtr (unJudyL m)  $ \p -> do
 #endif
-        v_ptr <- c_judy_lins p (fromIntegral k) nullError
-        if v_ptr == judyErrorPtr
-            then memoryError
-                --- WRONG!
-            else if v_ptr == nullPtr
-                    -- not in the map
-                    then poke v_ptr =<< toWord v
+        q     <- peek p -- get the actual judy array
+        v_ptr1 <- c_judy_lget q (fromIntegral k) nullError
+        if v_ptr1 == judyErrorPtr then memoryError
+            else if v_ptr1 == nullPtr
+                    then do
+                        v_ptr2 <- c_judy_lins p (fromIntegral k) nullError
+                        if v_ptr2 == judyErrorPtr then memoryError
+                          else poke v_ptr2 =<< toWord v
                     else do
-                        old_v <- fromWord =<< peek v_ptr
+                        old_v <- fromWord =<< peek v_ptr1
                         new_v <- toWord (f v old_v)
-                        poke v_ptr new_v
+                        poke v_ptr1 new_v
 {-# INLINE insertWith #-}
--}
 
 ------------------------------------------------------------------------
 
@@ -662,6 +660,7 @@ elems m = do
              Just (k,v)  -> do
                  xs <- go k
                  return (v : xs)
+
 
 ------------------------------------------------------------------------
 -- Judy errors
