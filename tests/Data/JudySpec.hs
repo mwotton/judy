@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections       #-}
 module Data.JudySpec where
 
 import           Control.Arrow   ((&&&))
@@ -92,3 +92,13 @@ spec = describe "Data.Judy" $ do
       length norepeatResults `shouldBe` length noRepeats
       repeatResults `shouldSatisfy` all (== Just (-1))
       norepeatResults `shouldSatisfy` all (\(Just a) -> a >= 0)
+
+  it "should return key-value pairs from the array state at the point `toList` was called" $ do
+    property $ \(k1, k2, v1::Int, v2::Int) -> do
+      j <- J.new :: IO (J.JudyL Int)
+      J.insert k1 v1 j
+
+      l <- J.toList =<< J.freeze j
+      J.insert k2 v2 j
+
+      l == [(k1, v1)] `shouldBe` True
