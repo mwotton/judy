@@ -520,6 +520,18 @@ findMax m = do
 ------------------------------------------------------------------------
 
 -- | Return all keys of the map, /lazily/, in ascending order.
+--
+-- Warning: This function is not safe. You /must/ fully evaluate the list (e.g.
+-- by consuming it in some strict function) before making any modifications to
+-- the array. For example,
+--
+-- >>> j <- J.new :: IO (J.JudyL Int)
+-- >>> J.insert 0 10 j
+-- >>> l <- J.keys j
+-- >>> J.insert 1 11 j
+-- >>> l
+-- [0,...(garbage output)
+--
 keys :: JudyL a -> IO [Key]
 keys m = do
 #if !defined(UNSAFE)
@@ -567,6 +579,9 @@ keys m = do
 ------------------------------------------------------------------------
 
 -- | Return keys and values of the map, /lazily/, in ascending order.
+--
+-- Warning: This function is not safe. See 'keys'.
+--
 toList :: JE a => JudyL a -> IO [(Key,a)]
 toList m = do
 #if !defined(UNSAFE)
@@ -615,6 +630,9 @@ toList m = do
 
 
 -- | Return all elems of the map, /lazily/, in ascending order.
+--
+-- Warning: This function is not safe. See 'keys'.
+--
 elems :: JE a => JudyL a -> IO [a]
 elems m = do
 #if !defined(UNSAFE)
