@@ -72,3 +72,36 @@ spec = describe "Data.Judy" $ do
       length norepeatResults `shouldBe` length noRepeats
       repeatResults `shouldSatisfy` all (== Just (-1))
       norepeatResults `shouldSatisfy` all (\(Just a) -> a >= 0)
+
+  it "should return keys from the array state at the point `keys` was called" $ do
+    property $ \(k1, k2, v1::Int, v2::Int) -> do
+      j <- J.new :: IO (J.JudyL Int)
+      J.insert k1 v1 j
+      l <- J.keys j
+      J.insert k2 v2 j
+
+      l == [k1] `shouldBe` True
+        -- This was done instead of the more natural
+        --
+        -- > l `shouldBe` [k1]
+        --
+        -- because list l might be extremely long; using `==` allows for lazy
+        -- comparison.
+
+  it "should return elements from the array state at the point `elems` was called" $ do
+    property $ \(k1, k2, v1::Int, v2::Int) -> do
+      j <- J.new :: IO (J.JudyL Int)
+      J.insert k1 v1 j
+      l <- J.elems j
+      J.insert k2 v2 j
+
+      l == [v1] `shouldBe` True
+
+  it "should return key-value pairs from the array state at the point `toList` was called" $ do
+    property $ \(k1, k2, v1::Int, v2::Int) -> do
+      j <- J.new :: IO (J.JudyL Int)
+      J.insert k1 v1 j
+      l <- J.toList j
+      J.insert k2 v2 j
+
+      l == [(k1, v1)] `shouldBe` True
