@@ -88,7 +88,9 @@ module Data.Judy (
     , Data.Judy.elems
     , Data.Judy.toList
 -- memoryUsed
-
+    -- * Freezing
+    , Data.Judy.freeze
+    , Data.Judy.unsafeFreeze
     -- * Judy-storable types
     , JE(..)
 
@@ -98,7 +100,7 @@ module Data.Judy (
 import Control.Concurrent
 #endif
 import Control.Applicative ((<$>))
-
+import Control.Exception (evaluate)
 import System.IO.Unsafe
 
 import Foreign hiding (new)
@@ -110,6 +112,7 @@ import GHC.Base
 import GHC.Prim
 import GHC.Word
 import Data.Char(chr)
+
 --
 -- For instances
 --
@@ -172,6 +175,8 @@ newtype JudyL a =
 type JudyL_ = Ptr JudyLArray
 
 data JudyLArray
+
+newtype JudyImmutable a = JudyImmutable (JudyL a)
 
 instance Show (JudyL a) where show _ = "<Judy a>"
 
@@ -518,22 +523,34 @@ findMax m = do
 {-# INLINE findMax #-}
 
 ------------------------------------------------------------------------
+-- | Makes a copy of a Judy array and packs it into an immutable
+--   wrapper.
+freeze :: (Show a, JE a) => JudyL a -> IO (JudyImmutable a)
+freeze j = do
+  newj <- new
+  toList' j >>= mapM_ (put newj)
+  return $! JudyImmutable newj
 
+  where
+    put :: (Show a, JE a) => JudyL a -> (Key,a) -> IO ()
+    put arr (k,v) = do
+      r <- insert k v arr
+      evaluate r
+--       print ("inserting", r, k, v)
+
+------------------------------------------------------------------------
+-- | Unsafely accesses a judy array. If you never try to update it
+--   again, this may be safe, and save some memory. Caveat emptor.
+unsafeFreeze :: JE a => JudyL a -> IO (JudyImmutable a)
+unsafeFreeze = return . JudyImmutable
+
+------------------------------------------------------------------------
 -- | Return all keys of the map, /lazily/, in ascending order.
---
--- Warning: This function is not safe. You /must/ fully evaluate the list (e.g.
--- by consuming it in some strict function) before making any modifications to
--- the array. For example,
---
--- >>> j <- J.new :: IO (J.JudyL Int)
--- >>> J.insert 0 10 j
--- >>> l <- J.keys j
--- >>> J.insert 1 11 j
--- >>> l
--- [0,...(garbage output)
---
-keys :: JudyL a -> IO [Key]
-keys m = do
+--   It is important that this not be interleaved with updates, so we
+--   take a JudyImmutable, which can only be obtained with freeze
+--   or unsafeFreeze (if you are sure you know what you are doing).
+keys :: JudyImmutable a -> IO [Key]
+keys (JudyImmutable m) = do
 #if !defined(UNSAFE)
     withMVar (unJudyL m) $ \m_ ->
       withForeignPtr m_ $ \p -> do
@@ -577,13 +594,15 @@ keys m = do
                  return (k : xs)
 
 ------------------------------------------------------------------------
-
 -- | Return keys and values of the map, /lazily/, in ascending order.
---
--- Warning: This function is not safe. See 'keys'.
---
-toList :: JE a => JudyL a -> IO [(Key,a)]
-toList m = do
+toList :: JE a => JudyImmutable a -> IO [(Key,a)]
+toList (JudyImmutable m) = toList' m
+
+
+------------------------------------------------------------------------
+-- | Return keys and values of the map, /lazily/, in ascending order.
+toList' :: JE a => JudyL a -> IO [(Key,a)]
+toList' m = do
 #if !defined(UNSAFE)
     withMVar (unJudyL m) $ \m_ ->
       withForeignPtr m_ $ \p -> do
@@ -630,11 +649,8 @@ toList m = do
 
 
 -- | Return all elems of the map, /lazily/, in ascending order.
---
--- Warning: This function is not safe. See 'keys'.
---
-elems :: JE a => JudyL a -> IO [a]
-elems m = do
+elems :: JE a => JudyImmutable a -> IO [a]
+elems (JudyImmutable m) = do
 #if !defined(UNSAFE)
     withMVar (unJudyL m) $ \m_ ->
       withForeignPtr m_ $ \p -> do
