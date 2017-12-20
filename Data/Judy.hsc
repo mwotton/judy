@@ -545,7 +545,7 @@ unsafeFreeze :: JE a => JudyL a -> IO (JudyImmutable a)
 unsafeFreeze = return . JudyImmutable
 
 ------------------------------------------------------------------------
--- | Return all keys of the map, /lazily/, in ascending order.
+-- | Return all keys of the map in ascending order.
 --   It is important that this not be interleaved with updates, so we
 --   take a JudyImmutable, which can only be obtained with freeze
 --   or unsafeFreeze (if you are sure you know what you are doing).
@@ -559,8 +559,7 @@ keys (JudyImmutable m) = do
 #endif
         q <- peek p -- get the actual judy array
 
-        -- Lazily loop through the keys
-        let go i = unsafeInterleaveIO (do
+        let go i = (do
                      -- dellocate
                      r <- alloca $ \k_ptr -> do
                          poke k_ptr i
@@ -594,13 +593,13 @@ keys (JudyImmutable m) = do
                  return (k : xs)
 
 ------------------------------------------------------------------------
--- | Return keys and values of the map, /lazily/, in ascending order.
+-- | Return keys and values of the map in ascending order.
 toList :: JE a => JudyImmutable a -> IO [(Key,a)]
 toList (JudyImmutable m) = toList' m
 
 
 ------------------------------------------------------------------------
--- | Return keys and values of the map, /lazily/, in ascending order.
+-- | Return keys and values of the map in ascending order.
 toList' :: JE a => JudyL a -> IO [(Key,a)]
 toList' m = do
 #if !defined(UNSAFE)
@@ -611,8 +610,7 @@ toList' m = do
 #endif
         q <- peek p -- get the actual judy array
 
-        -- Lazily loop through the keys
-        let go i = unsafeInterleaveIO (do
+        let go i = (do
                      -- dellocate
                      r <- alloca $ \k_ptr -> do
                          poke k_ptr i
@@ -648,7 +646,7 @@ toList' m = do
                  return ((k,v) : xs)
 
 
--- | Return all elems of the map, /lazily/, in ascending order.
+-- | Return all elems of the map in ascending order.
 elems :: JE a => JudyImmutable a -> IO [a]
 elems (JudyImmutable m) = do
 #if !defined(UNSAFE)
@@ -659,8 +657,7 @@ elems (JudyImmutable m) = do
 #endif
         q <- peek p -- get the actual judy array
 
-        -- Lazily loop through the keys
-        let go i = unsafeInterleaveIO (do
+        let go i = (do
                      -- dellocate
                      r <- alloca $ \k_ptr -> do
                          poke k_ptr i
