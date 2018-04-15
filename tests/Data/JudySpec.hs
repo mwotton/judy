@@ -2,20 +2,18 @@
 {-# LANGUAGE TupleSections       #-}
 module Data.JudySpec where
 
-import           Control.Arrow   ((&&&))
-import           Control.Monad   (guard)
+import           Control.Arrow   ((***))
 import qualified Data.Judy       as J
-import           Data.List       (nub, sortBy)
-import           Data.List       (groupBy, partition)
-import           Data.Maybe      (isJust)
+import           Data.List       (group, groupBy, nub, partition, sort, sortBy)
 import           Data.Monoid     ((<>))
 import           Data.Ord        (comparing)
 import           Data.Word       (Word)
 import           System.Mem      (performGC)
-import           Test.Hspec
-import           Test.QuickCheck
+import           Test.Hspec      (Spec, describe, it, shouldBe, shouldReturn,
+                                  shouldSatisfy)
+import           Test.QuickCheck (property, (==>))
 
-
+spec :: Spec
 spec = describe "Data.Judy" $ do
   it "should be set to the correct value after setting" $
     property $ \(k, v::Int) -> do
@@ -25,7 +23,7 @@ spec = describe "Data.Judy" $ do
       result <- J.lookup k j
       (before,result) `shouldBe` (Nothing, Just v)
 
-  it "should respect the last val set" $ do
+  it "should respect the last val set" $
     property $ \(k, v::Int) -> do
       j <- J.new :: IO (J.JudyL Int)
       J.insert k 0 j
@@ -34,7 +32,7 @@ spec = describe "Data.Judy" $ do
 
       result `shouldBe` Just v
 
-  it "freezing should be idempotent" $ do
+  it "freezing should be idempotent" $
     property $ \(values'::[(Word, Int)]) -> do
       let values = map head
                    $ groupBy (\a b -> fst a == fst b)
@@ -48,8 +46,8 @@ spec = describe "Data.Judy" $ do
   (`mapM_` [("unsafefreeze",J.unsafeFreeze)
            ,("safeFreeze", J.freeze)
            ])
-    $ \(name,method) -> do
-    it ("should fetch keys & vals in the right order using " <> name) $ do
+    $ \(name,method) ->
+    it ("should fetch keys & vals in the right order using " <> name) $
       property $ \(al :: [(Word,Int)]) ->
         length al == length (nub $ map fst al) ==>
         do
@@ -66,9 +64,9 @@ spec = describe "Data.Judy" $ do
           J.elems frozen `shouldReturn` map snd sortedL
           J.toList frozen `shouldReturn` sortedL
 
-  it "insertWith should be correct" $ do
+  it "insertWith should be correct" $
     -- bit ugly, but we don't have a Maybe instance for JE yet
-    let combine _ _ = (-1)
+    let combine _ _ = (-1) in
 
     property $ \(values'::[(Word, Int)]) -> do
       -- want lots of repeats, so we take the modulo of the key.
@@ -77,23 +75,21 @@ spec = describe "Data.Judy" $ do
       -- values coming in must be positive.
       let values = map (\(a,b) -> (a `mod` 20,abs b)) values'
       j <- J.new :: IO (J.JudyL Int)
-      mapM_ ((\(k,v) -> J.insertWith combine k v j)) values
+      mapM_ (\(k,v) -> J.insertWith combine k v j) values
       -- at this point, all repeated keys should have Nothing values
-      let (repeats, noRepeats) = (\(x,y) -> (map (fst . head) x,
-                                             map (fst . head) y))
+      let (repeats, noRepeats) = (map (fst.head) *** map (fst.head))
                                  $ partition (\x -> length x > 1)
                                  $ groupBy (\a b -> fst a == fst b)
                                  $ sortBy (comparing fst) values
       repeatResults <- (`mapM` repeats) $ \k -> J.lookup k j
-      norepeatResults <- (`mapM` noRepeats) $ \k -> do
-        J.lookup k j
+      norepeatResults <- (`mapM` noRepeats) (`J.lookup` j)
       performGC
       length repeatResults `shouldBe` length repeats
       length norepeatResults `shouldBe` length noRepeats
       repeatResults `shouldSatisfy` all (== Just (-1))
       norepeatResults `shouldSatisfy` all (\(Just a) -> a >= 0)
 
-  it "should return key-value pairs from the array state at the point `toList` was called" $ do
+  it "should return key-value pairs from the array state at the point `toList` was called" $
     property $ \(k1, k2, v1::Int, v2::Int) -> do
       j <- J.new :: IO (J.JudyL Int)
       J.insert k1 v1 j
@@ -102,3 +98,18 @@ spec = describe "Data.Judy" $ do
       J.insert k2 v2 j
 
       l == [(k1, v1)] `shouldBe` True
+
+  it "should return the correct size" $
+    property $ \(ls :: [Word]) -> do
+      j <- J.new :: IO (J.JudyL ())
+      let ordered = map head . group $ sort ls
+      mapM_ (\k -> J.insert k () j) ordered
+      J.size j `shouldReturn` length ordered
+
+  it "findMax should find the max" $
+    property $ \(ls :: [Word]) -> do
+      j <- J.new :: IO (J.JudyL ())
+      let ordered = map head . group $ sort ls
+      mapM_ (\k -> J.insert k () j) ordered
+      let res = case ordered of [] -> Nothing; xs -> Just (last xs,())
+      J.findMax j `shouldReturn` res

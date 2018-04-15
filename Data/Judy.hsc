@@ -3,6 +3,9 @@
 {-# LANGUAGE EmptyDataDecls           #-}
 {-# LANGUAGE TypeSynonymInstances     #-}
 {-# LANGUAGE MagicHash                #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 -- | Very fast, mutable associative data types based on Judy arrays.
 --
@@ -96,7 +99,7 @@ module Data.Judy (
     , Data.Judy.unsafeFreeze
 
     -- * Judy-storable types
-    , Data.Judy.JE (Data.Judy.toWord, Data.Judy.fromWord)
+    , Data.Judy.JE (toWord, fromWord)
 
   ) where
 
@@ -105,16 +108,16 @@ import Control.Concurrent
 #endif
 import Control.Applicative ((<$>))
 import Control.Exception (evaluate)
-import System.IO.Unsafe
+import System.IO.Unsafe()
 
 import Foreign hiding (new)
 import Foreign.C.Types
-import Foreign.ForeignPtr
+import Foreign.ForeignPtr()
 
 import GHC.Ptr
 import GHC.Base
-import GHC.Prim
-import GHC.Word
+import GHC.Prim()
+import GHC.Word()
 import Data.Char(chr)
 
 --
@@ -473,8 +476,8 @@ foreign import ccall unsafe "JudyLFirst"
 foreign import ccall unsafe "JudyLNext"
     c_judy_lnext :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
 
-foreign import ccall unsafe "JudyLPrev"
-    c_judy_lprev :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
+-- foreign import ccall unsafe "JudyLPrev"
+--    c_judy_lprev :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
 
 foreign import ccall unsafe "JudyLLast"
     c_judy_llast :: JudyL_ -> Ptr Key -> JError -> IO (Ptr Word)
@@ -735,26 +738,12 @@ nullError = JError nullPtr
 judyError :: CInt
 judyError = (#const JERR)
 
-{-
--- | For checking return values from various Judy functions
--- Pointer to a JError
-foreign import ccall unsafe "haskell-judy.h hs_judy_pointer_error"
-     c_judy_error_ptr :: Ptr Word
-
-judyErrorPtr :: Ptr Word
-judyErrorPtr = c_judy_error_ptr
-{-# INLINE judyErrorPtr #-}
--}
-
--- judyErrorPtr :: Ptr Word
--- judyErrorPtr = Ptr (int2Addr## (word2Int## (not## (int2Word## 0##))))
-                           -- wordPtrToPtr
 -- {-# INLINE judyErrorPtr #-}
 
 -- | The error pointer. maxBound :: Word. We try hard to get this to inline.
 -- Empirically determined to yield the fastest code.
 judyErrorPtr :: Ptr Word
-judyErrorPtr = Ptr (case (#const PJERR) of I## i## -> int2Addr## i##)
+judyErrorPtr = Ptr (case (#const PJERR) of (I## i##) -> int2Addr## i##)
 {-# INLINE judyErrorPtr #-}
 
 
