@@ -116,8 +116,8 @@ import Foreign.ForeignPtr()
 
 import GHC.Ptr
 import GHC.Base
-import GHC.Prim(Word(..))
-import GHC.Word()
+import GHC.Prim()
+import GHC.Word(Word(..))
 import Data.Char(chr)
 
 --
