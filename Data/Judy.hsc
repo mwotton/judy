@@ -67,7 +67,7 @@ module Data.Judy (
     -- * Basic types
     Data.Judy.JudyL
     , Data.Judy.Key
-    , Data.Judy.JudyImmutable
+    , Data.Judy.JudyImmutable(..)
 
     -- * Construction
     , Data.Judy.new
@@ -100,7 +100,8 @@ module Data.Judy (
 
     -- * Judy-storable types
     , Data.Judy.JE (toWord, fromWord)
-
+    -- * Internal functions exposed to make this library extendable
+    , nullError, JudyL(..), c_judy_lfirst, c_judy_lnext
   ) where
 
 #if !defined(UNSAFE)
