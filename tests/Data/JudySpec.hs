@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 module Data.JudySpec where
@@ -22,6 +23,24 @@ spec = describe "Data.Judy" $ do
       J.insert k v j
       result <- J.lookup k j
       (before,result) `shouldBe` (Nothing, Just v)
+
+#if MIN_VERSION_base(4,10,0)
+  it "should be set to the correct value after setting (Float)" $
+    property $ \(k, v::Float) -> do
+      j <- J.new :: IO (J.JudyL Float)
+      before <- J.lookup k j
+      J.insert k v j
+      result <- J.lookup k j
+      (before,result) `shouldBe` (Nothing, Just v)
+
+  it "should be set to the correct value after setting (Double/Word64)" $
+    property $ \(k, v::Double) -> do
+      j <- J.new :: IO (J.JudyL Double)
+      before <- J.lookup k j
+      J.insert k v j
+      result <- J.lookup k j
+      (before,result) `shouldBe` (Nothing, Just v)
+#endif
 
   it "should respect the last val set" $
     property $ \(k, v::Int) -> do
