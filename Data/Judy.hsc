@@ -1,5 +1,7 @@
 {-# LANGUAGE MagicHash                #-}
 
+#include "MachDeps.h"
+
 -- | Very fast, mutable associative data types based on Judy arrays.
 --
 -- A good imperative, mutable replacement for IntMap.
@@ -105,6 +107,9 @@ import Foreign hiding (new)
 
 import GHC.Ptr
 import GHC.Base
+#if MIN_VERSION_base(4,10,0)
+import GHC.Float
+#endif
 import GHC.Prim()
 import Data.Char(chr)
 import Data.Judy.Internal
@@ -590,6 +595,14 @@ instance JE Int32 where
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
+#if (WORD_SIZE_IN_BITS == 64)
+instance JE Int64 where
+    toWord   w = return (fromIntegral w)
+    fromWord w = return (fromIntegral w)
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+#endif
+
 instance JE Word8 where
     toWord   w = return (fromIntegral w)
     fromWord w = return (fromIntegral w)
@@ -608,11 +621,37 @@ instance JE Word32 where
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
 
+#if (WORD_SIZE_IN_BITS == 64)
+instance JE Word64 where
+    toWord   = return . fromIntegral
+    fromWord = return . fromIntegral
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+#endif
+
 instance JE Char where
     toWord   = return . fromIntegral . ord
     fromWord = return . chr . fromIntegral
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
+
+#if MIN_VERSION_base(4,10,0)
+
+instance JE Float where
+    toWord   = toWord . castFloatToWord32
+    fromWord = fmap castWord32ToFloat . fromWord
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+
+#if (WORD_SIZE_IN_BITS == 64)
+instance JE Double where
+    toWord   = toWord . castDoubleToWord64
+    fromWord = fmap castWord64ToDouble . fromWord
+    {-# INLINE toWord   #-}
+    {-# INLINE fromWord #-}
+#endif
+
+#endif
 
 ------------------------------------------------------------------------
 -- strict bytestrings may be stored.
