@@ -131,7 +131,7 @@ newtype JudyImmutable a = JudyImmutable (JudyL a)
 new :: JE a => IO (JudyL a)
 new = do
     -- we allocate the structure on the Haskell heap (just a pointer)
-    fp <- mallocForeignPtrBytes (sizeOf (undefined :: Ptr Word))
+    fp <- mallocForeignPtr
 
     -- note that the Haskell GC doesn't really know costly the arrays are.
     addForeignPtrFinalizer c_judyl_free_ptr fp
@@ -158,10 +158,8 @@ insert k v m = do
 #else
       withForeignPtr (unJudyL m)  $ \p -> do
 #endif
-        v_ptr <- c_judy_lins p (fromIntegral k) nullError
-        if v_ptr == judyErrorPtr
-            then memoryError
-            else poke v_ptr =<< toWord v
+        v_ptr <- checkJudyPtr <$> c_judy_lins p (fromIntegral k) nullError
+        poke v_ptr =<< toWord v
 {-# INLINE insert #-}
 
 -- | Insert with a function, combining new value and old value.
@@ -177,17 +175,15 @@ insertWith f k v m = do
       withForeignPtr (unJudyL m)  $ \p -> do
 #endif
         q     <- peek p -- get the actual judy array
-        v_ptr1 <- c_judy_lget q (fromIntegral k) nullError
-        if v_ptr1 == judyErrorPtr then memoryError
-            else if v_ptr1 == nullPtr
-                    then do
-                        v_ptr2 <- c_judy_lins p (fromIntegral k) nullError
-                        if v_ptr2 == judyErrorPtr then memoryError
-                          else poke v_ptr2 =<< toWord v
-                    else do
-                        old_v <- fromWord =<< peek v_ptr1
-                        new_v <- toWord (f v old_v)
-                        poke v_ptr1 new_v
+        v_ptr1 <- checkJudyPtr <$> c_judy_lget q (fromIntegral k) nullError
+        if v_ptr1 == nullPtr
+            then do
+                v_ptr2 <- checkJudyPtr <$> c_judy_lins p (fromIntegral k) nullError
+                poke v_ptr2 =<< toWord v
+            else do
+                old_v <- fromWord =<< peek v_ptr1
+                new_v <- toWord (f v old_v)
+                poke v_ptr1 new_v
 {-# INLINE insertWith #-}
 
 ------------------------------------------------------------------------
@@ -203,14 +199,12 @@ lookup k m = do
       withForeignPtr (unJudyL m)  $ \p -> do
 #endif
         q     <- peek p -- get the actual judy array
-        v_ptr <- c_judy_lget q (fromIntegral k) nullError
-        if v_ptr == judyErrorPtr
-            then memoryError
-            else if v_ptr == nullPtr
-                    then return Nothing
-                    else do
-                        v <- fromWord =<< peek v_ptr
-                        return . Just $! v
+        v_ptr <- checkJudyPtr <$> c_judy_lget q (fromIntegral k) nullError
+        if v_ptr == nullPtr
+            then return Nothing
+            else do
+                v <- fromWord =<< peek v_ptr
+                return . Just $! v
 {-# INLINE lookup #-}
 
 -- | Is the key a member of the map?
@@ -223,10 +217,8 @@ member k m = do
       withForeignPtr (unJudyL m)  $ \p -> do
 #endif
         q     <- peek p -- get the actual judy array
-        v_ptr <- c_judy_lget q (fromIntegral k) nullError
-        if v_ptr == judyErrorPtr
-            then memoryError
-            else return $! v_ptr /= nullPtr
+        v_ptr <- checkJudyPtr <$> c_judy_lget q (fromIntegral k) nullError
+        return $! v_ptr /= nullPtr
 {-# INLINE member #-}
 
 -- | Update a value at a specific key with the result of the provided
@@ -240,15 +232,13 @@ adjust f k m = do
       withForeignPtr (unJudyL m)  $ \p -> do
 #endif
         q     <- peek p -- get the actual judy array
-        v_ptr <- c_judy_lget q (fromIntegral k) nullError
-        if v_ptr == judyErrorPtr
-            then memoryError
-            else if v_ptr == nullPtr
-                    then return ()
-                    else do
-                        old_v <- fromWord =<< peek v_ptr
-                        new_v <- toWord (f old_v)
-                        poke v_ptr new_v
+        v_ptr <- checkJudyPtr <$> c_judy_lget q (fromIntegral k) nullError
+        if v_ptr == nullPtr
+            then return $! ()
+            else do
+                old_v <- fromWord =<< peek v_ptr
+                new_v <- toWord (f old_v)
+                poke v_ptr new_v
 {-# INLINE adjust #-}
 
 
@@ -263,7 +253,8 @@ delete k m = do
       withForeignPtr (unJudyL m)  $ \p -> do
 #endif
         i <- c_judy_ldel p (fromIntegral k) nullError
-        if i == judyError then memoryError else return ()
+        _ <- evaluate (checkJudyInt i)
+        return $! ()
 {-# INLINE delete #-}
 
 
@@ -632,4 +623,3 @@ instance JE S.ByteString where
                      a## -> deRefStablePtr (castPtrToStablePtr (Ptr a##))
     {-# INLINE toWord   #-}
     {-# INLINE fromWord #-}
-
