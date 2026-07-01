@@ -6,9 +6,9 @@ import           Control.Arrow   ((***))
 import qualified Data.ByteString as S
 import           Data.Int        (Int16, Int32, Int8)
 import qualified Data.Judy       as J
-import           Data.List       (group, groupBy, nub, partition, sort, sortBy)
+import           Data.List       (groupBy, nub, partition, sort, sortBy)
 import           Data.Ord        (comparing)
-import           Data.Word       (Word, Word16, Word32, Word8)
+import           Data.Word       (Word16, Word32, Word8)
 import           System.Mem      (performGC)
 import           Test.Hspec      (Spec, describe, it, shouldBe, shouldReturn,
                                   shouldSatisfy)
@@ -71,10 +71,8 @@ spec = describe "Data.Judy" $ do
     J.null j `shouldReturn` False
 
   it "freezing should be idempotent" $
-    property $ \(values'::[(Word, Int)]) -> do
-      let values = map head
-                   $ groupBy (\a b -> fst a == fst b)
-                   $ sortBy (comparing fst) values'
+    property $ \(values'::[(J.Key, Int)]) -> do
+      let values = uniqueByKey $ sortBy (comparing fst) values'
       j <- J.new
       mapM_ (\(k,v) -> J.insert k v j) values
       newj <- J.unsafeFreeze j
@@ -86,7 +84,7 @@ spec = describe "Data.Judy" $ do
            ])
     $ \(name,method) ->
     it ("should fetch keys & vals in the right order using " <> name) $
-      property $ \(al :: [(Word,Int)]) ->
+      property $ \(al :: [(J.Key,Int)]) ->
         length al == length (nub $ map fst al) ==>
         do
           let sortedL = sortBy (comparing fst) al
@@ -106,7 +104,7 @@ spec = describe "Data.Judy" $ do
     -- bit ugly, but we don't have a Maybe instance for JE yet
     let combine _ _ = (-1) in
 
-    property $ \(values'::[(Word, Int)]) -> do
+    property $ \(values'::[(J.Key, Int)]) -> do
       -- want lots of repeats, so we take the modulo of the key.
       -- as noted above, because of the lack of a Maybe instance we
       -- denote a collision with a negative number: therefore, all
@@ -115,7 +113,7 @@ spec = describe "Data.Judy" $ do
       j <- J.new :: IO (J.JudyL Int)
       mapM_ (\(k,v) -> J.insertWith combine k v j) values
       -- at this point, all repeated keys should have Nothing values
-      let (repeats, noRepeats) = (map (fst.head) *** map (fst.head))
+      let (repeats, noRepeats) = (groupKeys *** groupKeys)
                                  $ partition (\x -> length x > 1)
                                  $ groupBy (\a b -> fst a == fst b)
                                  $ sortBy (comparing fst) values
@@ -125,7 +123,7 @@ spec = describe "Data.Judy" $ do
       length repeatResults `shouldBe` length repeats
       length norepeatResults `shouldBe` length noRepeats
       repeatResults `shouldSatisfy` all (== Just (-1))
-      norepeatResults `shouldSatisfy` all (\(Just a) -> a >= 0)
+      norepeatResults `shouldSatisfy` all (maybe False (>= 0))
 
   it "insertWith should combine new and old values" $ do
     j <- J.new :: IO (J.JudyL Int)
@@ -144,26 +142,26 @@ spec = describe "Data.Judy" $ do
       l == [(k1, v1)] `shouldBe` True
 
   it "should return the correct size" $
-    property $ \(ls :: [Word]) -> do
+    property $ \(ls :: [J.Key]) -> do
       j <- J.new :: IO (J.JudyL ())
-      let ordered = map head . group $ sort ls
+      let ordered = uniqueSorted $ sort ls
       mapM_ (\k -> J.insert k () j) ordered
       J.size j `shouldReturn` length ordered
 
   it "findMax should find the max" $
-    property $ \(ls :: [Word]) -> do
+    property $ \(ls :: [J.Key]) -> do
       j <- J.new :: IO (J.JudyL ())
-      let ordered = map head . group $ sort ls
+      let ordered = uniqueSorted $ sort ls
       mapM_ (\k -> J.insert k () j) ordered
-      let res = case ordered of [] -> Nothing; xs -> Just (last xs,())
+      let res = case reverse ordered of [] -> Nothing; x:_ -> Just (x,())
       J.findMax j `shouldReturn` res
 
   it "findMin should find the min" $
-    property $ \(ls :: [Word]) -> do
+    property $ \(ls :: [J.Key]) -> do
       j <- J.new :: IO (J.JudyL ())
-      let ordered = map head . group $ sort ls
+      let ordered = uniqueSorted $ sort ls
       mapM_ (\k -> J.insert k () j) ordered
-      let res = case ordered of [] -> Nothing; xs -> Just (head xs,())
+      let res = case ordered of [] -> Nothing; x:_ -> Just (x,())
       J.findMin j `shouldReturn` res
 
   it "should round-trip storable element representations" $ do
@@ -189,3 +187,17 @@ roundTrip value = do
   encoded <- J.toWord value
   decoded <- J.fromWord encoded
   decoded `shouldBe` value
+
+uniqueSorted :: Eq a => [a] -> [a]
+uniqueSorted [] = []
+uniqueSorted (x:xs) = x : uniqueSorted (dropWhile (== x) xs)
+
+uniqueByKey :: Eq k => [(k, a)] -> [(k, a)]
+uniqueByKey [] = []
+uniqueByKey (x:xs) = x : uniqueByKey (dropWhile ((== fst x) . fst) xs)
+
+groupKeys :: [[(k, a)]] -> [k]
+groupKeys = foldr addKey []
+  where
+    addKey [] acc = acc
+    addKey ((k,_):_) acc = k : acc
