@@ -4,5 +4,5 @@ import qualified Data.JudySpec
 import           Test.Hspec   (hspec)
 
 main :: IO ()
--- Keep this explicit list in sync with any future *Spec modules.
+-- Data.JudySpec is currently the only *Spec module under tests/.
 main = hspec Data.JudySpec.spec
