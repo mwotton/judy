@@ -3,11 +3,12 @@
 module Data.JudySpec where
 
 import           Control.Arrow   ((***))
+import qualified Data.ByteString as S
+import           Data.Int        (Int16, Int32, Int8)
 import qualified Data.Judy       as J
 import           Data.List       (group, groupBy, nub, partition, sort, sortBy)
-import           Data.Monoid     ((<>))
 import           Data.Ord        (comparing)
-import           Data.Word       (Word)
+import           Data.Word       (Word, Word16, Word32, Word8)
 import           System.Mem      (performGC)
 import           Test.Hspec      (Spec, describe, it, shouldBe, shouldReturn,
                                   shouldSatisfy)
@@ -31,6 +32,43 @@ spec = describe "Data.Judy" $ do
       result <- J.lookup k j
 
       result `shouldBe` Just v
+
+  it "should report membership" $
+    property $ \(k, other, v::Int) ->
+      k /= other ==>
+        do
+          j <- J.new :: IO (J.JudyL Int)
+          J.member k j `shouldReturn` False
+          J.insert k v j
+          J.member k j `shouldReturn` True
+          J.member other j `shouldReturn` False
+
+  it "should delete values" $
+    property $ \(k, v::Int) -> do
+      j <- J.new :: IO (J.JudyL Int)
+      J.delete k j
+      J.insert k v j
+      J.delete k j
+      J.lookup k j `shouldReturn` Nothing
+
+  it "should adjust existing values only" $
+    property $ \(k, other, v::Int) ->
+      k /= other ==>
+        do
+          j <- J.new :: IO (J.JudyL Int)
+          J.adjust (+ 1) k j
+          J.lookup k j `shouldReturn` Nothing
+          J.insert k v j
+          J.adjust (+ 1) k j
+          J.adjust (+ 1) other j
+          J.lookup k j `shouldReturn` Just (v + 1)
+          J.lookup other j `shouldReturn` Nothing
+
+  it "should report whether the array is empty" $ do
+    j <- J.new :: IO (J.JudyL Int)
+    J.null j `shouldReturn` True
+    J.insert 1 1 j
+    J.null j `shouldReturn` False
 
   it "freezing should be idempotent" $
     property $ \(values'::[(Word, Int)]) -> do
@@ -89,6 +127,12 @@ spec = describe "Data.Judy" $ do
       repeatResults `shouldSatisfy` all (== Just (-1))
       norepeatResults `shouldSatisfy` all (\(Just a) -> a >= 0)
 
+  it "insertWith should combine new and old values" $ do
+    j <- J.new :: IO (J.JudyL Int)
+    J.insert 1 10 j
+    J.insertWith (+) 1 5 j
+    J.lookup 1 j `shouldReturn` Just 15
+
   it "should return key-value pairs from the array state at the point `toList` was called" $
     property $ \(k1, k2, v1::Int, v2::Int) -> do
       j <- J.new :: IO (J.JudyL Int)
@@ -113,3 +157,35 @@ spec = describe "Data.Judy" $ do
       mapM_ (\k -> J.insert k () j) ordered
       let res = case ordered of [] -> Nothing; xs -> Just (last xs,())
       J.findMax j `shouldReturn` res
+
+  it "findMin should find the min" $
+    property $ \(ls :: [Word]) -> do
+      j <- J.new :: IO (J.JudyL ())
+      let ordered = map head . group $ sort ls
+      mapM_ (\k -> J.insert k () j) ordered
+      let res = case ordered of [] -> Nothing; xs -> Just (head xs,())
+      J.findMin j `shouldReturn` res
+
+  it "should round-trip storable element representations" $ do
+    roundTrip ()
+    roundTrip True
+    roundTrip False
+    roundTrip LT
+    roundTrip EQ
+    roundTrip GT
+    roundTrip (123 :: Word)
+    roundTrip (-123 :: Int)
+    roundTrip (-12 :: Int8)
+    roundTrip (-1234 :: Int16)
+    roundTrip (-123456 :: Int32)
+    roundTrip (12 :: Word8)
+    roundTrip (1234 :: Word16)
+    roundTrip (123456 :: Word32)
+    roundTrip 'J'
+    roundTrip (S.pack [0, 1, 2, 255])
+
+roundTrip :: (Eq a, Show a, J.JE a) => a -> IO ()
+roundTrip value = do
+  encoded <- J.toWord value
+  decoded <- J.fromWord encoded
+  decoded `shouldBe` value

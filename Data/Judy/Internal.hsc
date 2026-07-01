@@ -5,6 +5,7 @@
 
 module Data.Judy.Internal (
     JudyL_, JudyL(..), Key, JError(..), nullError, judyError, judyErrorPtr, memoryError,
+    checkJudyPtr, checkJudyInt,
     c_judyl_free_ptr, c_judy_lget, c_judy_lins, c_judy_ldel,
     c_judy_lcount, c_judy_lfirst, c_judy_lnext, c_judy_llast
   ) where
@@ -247,3 +248,14 @@ memoryError :: a
 memoryError = error "Data.Judy: memory error with JudyL"
 {-# NOINLINE memoryError #-}
 
+checkJudyPtr :: Ptr Word -> Ptr Word
+checkJudyPtr p
+    | p == judyErrorPtr = memoryError
+    | otherwise         = p
+{-# INLINE checkJudyPtr #-}
+
+checkJudyInt :: CInt -> CInt
+checkJudyInt i
+    | i == judyError = memoryError
+    | otherwise      = i
+{-# INLINE checkJudyInt #-}
