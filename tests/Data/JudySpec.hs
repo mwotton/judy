@@ -1,14 +1,16 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
+#include "MachDeps.h"
 module Data.JudySpec where
 
 import           Control.Arrow   ((***))
 import qualified Data.ByteString as S
-import           Data.Int        (Int16, Int32, Int8)
+import           Data.Int        (Int16, Int32, Int64, Int8)
 import qualified Data.Judy       as J
 import           Data.List       (groupBy, nub, partition, sort, sortBy)
 import           Data.Ord        (comparing)
-import           Data.Word       (Word16, Word32, Word8)
+import           Data.Word       (Word16, Word32, Word64, Word8)
 import           System.Mem      (performGC)
 import           Test.Hspec      (Spec, describe, it, shouldBe, shouldReturn,
                                   shouldSatisfy)
@@ -23,6 +25,24 @@ spec = describe "Data.Judy" $ do
       J.insert k v j
       result <- J.lookup k j
       (before,result) `shouldBe` (Nothing, Just v)
+
+#if MIN_VERSION_base(4,10,0)
+  it "should be set to the correct value after setting (Float)" $
+    property $ \(k, v::Float) -> do
+      j <- J.new :: IO (J.JudyL Float)
+      before <- J.lookup k j
+      J.insert k v j
+      result <- J.lookup k j
+      (before,result) `shouldBe` (Nothing, Just v)
+
+  it "should be set to the correct value after setting (Double/Word64)" $
+    property $ \(k, v::Double) -> do
+      j <- J.new :: IO (J.JudyL Double)
+      before <- J.lookup k j
+      J.insert k v j
+      result <- J.lookup k j
+      (before,result) `shouldBe` (Nothing, Just v)
+#endif
 
   it "should respect the last val set" $
     property $ \(k, v::Int) -> do
@@ -176,9 +196,15 @@ spec = describe "Data.Judy" $ do
     roundTrip (-12 :: Int8)
     roundTrip (-1234 :: Int16)
     roundTrip (-123456 :: Int32)
+#if (WORD_SIZE_IN_BITS == 64)
+    roundTrip (-123456789 :: Int64)
+#endif
     roundTrip (12 :: Word8)
     roundTrip (1234 :: Word16)
     roundTrip (123456 :: Word32)
+#if (WORD_SIZE_IN_BITS == 64)
+    roundTrip (123456789 :: Word64)
+#endif
     roundTrip 'J'
     roundTrip (S.pack [0, 1, 2, 255])
 
