@@ -1,15 +1,16 @@
 {-# LANGUAGE CPP                 #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
+#include "MachDeps.h"
 module Data.JudySpec where
 
 import           Control.Arrow   ((***))
 import qualified Data.ByteString as S
-import           Data.Int        (Int16, Int32, Int8)
+import           Data.Int        (Int16, Int32, Int64, Int8)
 import qualified Data.Judy       as J
 import           Data.List       (groupBy, nub, partition, sort, sortBy)
 import           Data.Ord        (comparing)
-import           Data.Word       (Word16, Word32, Word8)
+import           Data.Word       (Word16, Word32, Word64, Word8)
 import           System.Mem      (performGC)
 import           Test.Hspec      (Spec, describe, it, shouldBe, shouldReturn,
                                   shouldSatisfy)
@@ -195,9 +196,15 @@ spec = describe "Data.Judy" $ do
     roundTrip (-12 :: Int8)
     roundTrip (-1234 :: Int16)
     roundTrip (-123456 :: Int32)
+#if (WORD_SIZE_IN_BITS == 64)
+    roundTrip (-123456789 :: Int64)
+#endif
     roundTrip (12 :: Word8)
     roundTrip (1234 :: Word16)
     roundTrip (123456 :: Word32)
+#if (WORD_SIZE_IN_BITS == 64)
+    roundTrip (123456789 :: Word64)
+#endif
     roundTrip 'J'
     roundTrip (S.pack [0, 1, 2, 255])
 
